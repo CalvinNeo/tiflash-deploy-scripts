@@ -6,6 +6,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -75,20 +76,32 @@ func AsyncStmt(ctx context.Context, name string, threads int, db *sql.DB, insert
 func TestOncall3996() {
 	db := GetDB()
 
+	maxTick := 0
+
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
 	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
 	MustExec(db, "alter table test99.addpartition set tiflash replica 1")
-	WaitTableOK(db, "addpartition", 10)
+	if ok, tick := WaitTableOK(db, "addpartition", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
 
+	start := time.Now()
 	var wg sync.WaitGroup
-	M := 50
+	M := 100
+	timeout := 40
 	go func() {
 		wg.Add(1)
 		for lessThan := 40; lessThan < M; lessThan += 1 {
 			MustExec(db, "ALTER TABLE test99.addpartition ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", lessThan, lessThan)
-			WaitTableOK(db, "addpartition", 60)
+			if ok, tick := WaitTableOK(db, "addpartition", timeout, strconv.Itoa(lessThan)); ok {
+				if tick > maxTick {
+					maxTick = tick
+				}
+			}
 		}
 		wg.Done()
 	}()
@@ -100,13 +113,18 @@ func TestOncall3996() {
 			fmt.Printf("Handle %v\n", y)
 			MustExec(db, "create table test99.tb%v(z int)", y)
 			MustExec(db, "alter table test99.tb%v set tiflash replica 1", y)
-			WaitTableOK(db, fmt.Sprintf("tb%v", y), 60)
+			if ok, tick := WaitTableOK(db, fmt.Sprintf("tb%v", y), timeout, ""); ok {
+				if tick > maxTick {
+					maxTick = tick
+				}
+			}
 			wg.Done()
 		}()
 	}
 
 	wg.Wait()
 	db.Close()
+	fmt.Printf("maxTick %v elapsed %v\n", maxTick, time.Since(start))
 }
 
 
@@ -123,21 +141,34 @@ func TestOncal3996_1() {
 	MustExec(db, "alter table test99.tbl168 set tiflash replica 1")
 
 	fmt.Println("Wait tbl168")
-	WaitTableOK(db, "tbl168", 10)
+	maxTick := 0
+	if ok, tick := WaitTableOK(db, "tbl168", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
 
 
 	lessThan := "40"
 	MustExec(db, "ALTER TABLE test99.tbl168 ADD PARTITION (PARTITION pn VALUES LESS THAN (%v))", lessThan)
 	MustExec(db, "alter table test99.victim166 set tiflash replica 1")
 	fmt.Println("Wait 166")
-	if b := WaitTableOK(db, "victim166", 15); !b {
+	if b, tick := WaitTableOK(db, "victim166", 15, ""); !b {
 		fmt.Println("Error!")
 		return
+	} else {
+		if tick > maxTick {
+			maxTick = tick
+		}
 	}
 	fmt.Println("Wait 168")
-	if b := WaitTableOK(db, "tbl168", 15); !b {
+	if b, tick := WaitTableOK(db, "tbl168", 15, ""); !b {
 		fmt.Println("Error!")
 		return
+	} else {
+		if tick > maxTick {
+			maxTick = tick
+		}
 	}
 }
 
@@ -149,12 +180,12 @@ func MustExec(db *sql.DB, f string, args ...interface{}) {
 	}
 }
 
-func WaitTableOK(db *sql.DB, tbn string, to int) bool {
+func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {
 	tick := 0
 	for {
 		select {
 		case <-time.After(1 * time.Second):
-			fmt.Printf("Normal check %v at %v\n", tbn, tick)
+			fmt.Printf("Normal check %v tag %v retry %v\n", tbn, tag, tick)
 			var x int
 			s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = '%v';", tbn)
 			row := db.QueryRow(s)
@@ -163,12 +194,12 @@ func WaitTableOK(db *sql.DB, tbn string, to int) bool {
 			}
 			tick += 1
 			if x == 1 {
-				fmt.Printf("OK check %v at %v\n", tbn, tick)
-				return true
+				fmt.Printf("OK check %v tag %v retry %v\n", tbn, tag, tick)
+				return true, tick
 			}
 			if tick >= to {
-				fmt.Println("Fail")
-				return false
+				fmt.Printf("Fail table %v tag %v retry %v\n", tbn, tag, tick)
+				return false, tick
 			}
 		}
 	}
@@ -276,11 +307,11 @@ func main() {
 	// Single
 	//TestPerformance(1, 10)
 	// Multi
-	TestPerformance(100, 10)
+	//TestPerformance(100, 10)
 	//TestPerformance(40, 4)
 	//TestPerformance(20, 2)
 	//TODO
-	//TestOncall3996()
+	TestOncall3996()
 
 	//TestChannel()
 }
