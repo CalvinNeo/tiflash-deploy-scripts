@@ -205,7 +205,7 @@ func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {
 	}
 }
 
-func TestPerformance(C int, T int) {
+func TestPerformance(C int, T int, Offset int) {
 	runtime.GOMAXPROCS(5)
 	ctx := context.Background()
 	db := GetDB()
@@ -213,7 +213,7 @@ func TestPerformance(C int, T int) {
 
 	fCreate := func(ch *chan []string) {
 		for i := 0; i < C; i++ {
-			*ch <- []string{fmt.Sprintf("create table test99.t%v(z int)", i)}
+			*ch <- []string{fmt.Sprintf("create table test99.t%v(z int)", i + Offset)}
 		}
 	}
 	AsyncStmt(ctx, "create", 10, db, fCreate)
@@ -225,8 +225,8 @@ func TestPerformance(C int, T int) {
 		for i := 0; i < C; i++ {
 			y := i
 			*ch <- []string{
-				fmt.Sprintf("alter table test99.t%v set tiflash replica 1", y),
-				fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = 't%v';", y),
+				fmt.Sprintf("alter table test99.t%v set tiflash replica 1", y + Offset),
+				fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = 't%v';", y + Offset),
 			}
 		}
 	}
@@ -281,6 +281,50 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration) {
 
 }
 
+
+func TestOncall3793() {
+	db := GetDB()
+
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+
+	C := 100
+
+	TestPerformance(C, 4, 0)
+
+
+	gcTimeFormat := "20060102-15:04:05 -0700 MST"
+	now := time.Now()
+	lastSafePoint := now.Add(0 - 24 * time.Hour).Format(gcTimeFormat)
+	safePointSQL := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_safe_point', '%[1]s', ''),('tikv_gc_enable','true','')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '%[1]s'`
+
+	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
+	fmt.Printf("lastSafePoint %v\n", safePointSQL)
+	MustExec(db, safePointSQL)
+
+	for i := 0; i < C; i++ {
+		fmt.Printf("Drop table t%v\n", i)
+		MustExec(db, "drop table test99.t%v", i)
+	}
+	var gc_delete_range int
+	var gc_delete_range_done int
+	row := db.QueryRow(fmt.Sprintf("select count(*) from mysql.gc_delete_range where ts > %v", TimeToOracleLowerBound(now)))
+	if err := row.Scan(&gc_delete_range); err != nil {
+		panic(err)
+	}
+	row = db.QueryRow(fmt.Sprintf("select count(*) from mysql.gc_delete_range_done where ts > %v", TimeToOracleLowerBound(now)))
+	if err := row.Scan(&gc_delete_range_done); err != nil {
+		panic(err)
+	}
+	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
+
+	deltaC := 30
+	TestPerformance(deltaC, 4, C)
+	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
+}
+
 //var c chan int
 //
 //func TestChannel() {
@@ -303,15 +347,43 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration) {
 //}
 
 
+const (
+	physicalShiftBits = 18
+)
+
+func ExtractPhysical(ts uint64) int64 {
+	return int64(ts >> physicalShiftBits)
+}
+
+func GetTimeFromTS(ts uint64) time.Time {
+	ms := ExtractPhysical(ts)
+	return time.Unix(ms/1e3, (ms%1e3)*1e6)
+}
+
+func GetPhysicTime(ts uint64) {
+	fmt.Printf("Physical time %v\n", GetTimeFromTS(ts))
+}
+
+func TimeToOracleLowerBound(t time.Time) uint64 {
+	physical := uint64((t.UnixNano() / int64(time.Millisecond)) + 0)
+	logical := uint64(0)
+	return (physical << uint64(physicalShiftBits)) + logical
+}
+
 func main() {
 	// Single
-	//TestPerformance(1, 10)
+	//TestPerformance(1, 10, 0)
 	// Multi
-	//TestPerformance(100, 10)
-	//TestPerformance(40, 4)
-	//TestPerformance(20, 2)
+	//TestPerformance(100, 10, 0)
+	//TestPerformance(40, 4, 0)
+	//TestPerformance(20, 2, 0)
 	//TODO
-	TestOncall3996()
+	//TestOncall3996()
 
+	TestOncall3793()
+
+	//x := uint64(429772939013390339)
+	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
+	//fmt.Printf("%v %v %v\n", x, y, x - y)
 	//TestChannel()
 }
