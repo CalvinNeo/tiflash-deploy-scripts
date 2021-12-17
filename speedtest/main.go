@@ -281,6 +281,31 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration) {
 
 }
 
+func ChangeGCSafePoint(db *sql.DB, t time.Time) {
+	gcTimeFormat := "20060102-15:04:05 -0700 MST"
+	lastSafePoint := t.Format(gcTimeFormat)
+	safePointSQL := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_safe_point', '%[1]s', '')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '%[1]s'`
+
+	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
+	fmt.Printf("lastSafePoint %v\n", safePointSQL)
+	MustExec(db, safePointSQL)
+
+
+	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_enable','true','')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = 'true'`
+	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
+	MustExec(db, safePointSQL)
+
+
+	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_life_time','1m0s','')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '1m0s'`
+	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
+	MustExec(db, safePointSQL)
+}
 
 func TestOncall3793() {
 	db := GetDB()
@@ -288,21 +313,12 @@ func TestOncall3793() {
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	C := 100
+	C := 200
 
-	TestPerformance(C, 4, 0)
+	TestPerformance(C, 1, 0)
 
-
-	gcTimeFormat := "20060102-15:04:05 -0700 MST"
 	now := time.Now()
-	lastSafePoint := now.Add(0 - 24 * time.Hour).Format(gcTimeFormat)
-	safePointSQL := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_safe_point', '%[1]s', ''),('tikv_gc_enable','true','')
-			       ON DUPLICATE KEY
-			       UPDATE variable_value = '%[1]s'`
-
-	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
-	fmt.Printf("lastSafePoint %v\n", safePointSQL)
-	MustExec(db, safePointSQL)
+	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour))
 
 	for i := 0; i < C; i++ {
 		fmt.Printf("Drop table t%v\n", i)
@@ -320,7 +336,7 @@ func TestOncall3793() {
 	}
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
-	deltaC := 30
+	deltaC := 40
 	TestPerformance(deltaC, 4, C)
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 }
