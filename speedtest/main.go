@@ -232,12 +232,14 @@ func TestPerformance(C int, T int, Offset int) {
 	}
 	fRunner := func(index int, s *[]string) {
 		var x int
+		// Run ddl.
 		fmt.Printf("[index %v@%v] Handle %v\n", index, time.Now(), (*s)[0])
 		start := time.Now()
 		_, err := db.Exec((*s)[0])
 		if err != nil {
 			panic(err)
 		}
+		// Wait ready
 		fmt.Printf("[index %v@%v] Pending %v\n", index, time.Now(), (*s)[0])
 		start2 := time.Now()
 		for {
@@ -281,7 +283,7 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration) {
 
 }
 
-func ChangeGCSafePoint(db *sql.DB, t time.Time) {
+func ChangeGCSafePoint(db *sql.DB, t time.Time, enable string, lifeTime string) {
 	gcTimeFormat := "20060102-15:04:05 -0700 MST"
 	lastSafePoint := t.Format(gcTimeFormat)
 	safePointSQL := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_safe_point', '%[1]s', '')
@@ -293,17 +295,19 @@ func ChangeGCSafePoint(db *sql.DB, t time.Time) {
 	MustExec(db, safePointSQL)
 
 
-	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_enable','true','')
+	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_enable','%[1]s','')
 			       ON DUPLICATE KEY
-			       UPDATE variable_value = 'true'`
-	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
+			       UPDATE variable_value = '%[1]s'`
+	safePointSQL = fmt.Sprintf(safePointSQL, enable)
+	fmt.Printf("enable %v\n", safePointSQL)
 	MustExec(db, safePointSQL)
 
 
-	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_life_time','1m0s','')
+	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_life_time','%[1]s','')
 			       ON DUPLICATE KEY
-			       UPDATE variable_value = '1m0s'`
-	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
+			       UPDATE variable_value = '%[1]s'`
+	safePointSQL = fmt.Sprintf(safePointSQL, lifeTime)
+	fmt.Printf("lifeTime %v\n", safePointSQL)
 	MustExec(db, safePointSQL)
 }
 
@@ -313,12 +317,12 @@ func TestOncall3793() {
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	C := 200
+	C := 20
 
 	TestPerformance(C, 1, 0)
 
 	now := time.Now()
-	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour))
+	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour), "true", "1000m")
 
 	for i := 0; i < C; i++ {
 		fmt.Printf("Drop table t%v\n", i)
@@ -339,6 +343,8 @@ func TestOncall3793() {
 	deltaC := 40
 	TestPerformance(deltaC, 4, C)
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
+
+	ChangeGCSafePoint(db, now, "false", "10m0s")
 }
 
 //var c chan int
@@ -388,7 +394,7 @@ func TimeToOracleLowerBound(t time.Time) uint64 {
 
 func main() {
 	// Single
-	//TestPerformance(1, 10, 0)
+	//TestPerformance(10, 1, 0)
 	// Multi
 	//TestPerformance(100, 10, 0)
 	//TestPerformance(40, 4, 0)
