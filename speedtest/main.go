@@ -128,6 +128,7 @@ func TestOncall3996() {
 }
 
 
+
 func TestOncal3996_1() {
 	// tbl168 will block victim166
 	db := GetDB()
@@ -392,6 +393,81 @@ func TimeToOracleLowerBound(t time.Time) uint64 {
 	return (physical << uint64(physicalShiftBits)) + logical
 }
 
+func TestPlainAddTable() {
+
+}
+
+
+func TestPlainDropTable() {
+
+}
+
+
+func TestPlainTruncateTable() {
+
+}
+
+
+func TestPlainAddPartition() {
+	db := GetDB()
+
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+
+	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
+	MustExec(db, "alter table test99.addpartition set tiflash replica 1")
+	maxTick := 0
+	MustExec(db, "alter table test99.addpartition ADD PARTITION (PARTITION pn40 VALUES LESS THAN (40))")
+	if ok, tick := WaitTableOK(db, "addpartition", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+}
+
+func TestPlainTruncatePartition() {
+	db := GetDB()
+
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+
+	MustExec(db, "create table test99.truncatepartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
+	MustExec(db, "alter table test99.truncatepartition set tiflash replica 1")
+	maxTick := 0
+
+	MustExec(db, "insert into test99.truncatepartition VALUES(9)")
+	MustExec(db, "alter table test99.truncatepartition truncate PARTITION p0")
+	if ok, tick := WaitTableOK(db, "truncatepartition", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+}
+
+func TestPlainDropPartition() {
+	db := GetDB()
+
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+
+	MustExec(db, "create table test99.droppartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
+	MustExec(db, "alter table test99.droppartition set tiflash replica 1")
+	maxTick := 0
+	MustExec(db, "alter table test99.droppartition drop partition p0")
+	if ok, tick := WaitTableOK(db, "droppartition", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+}
+
+
+func TestPlain() {
+	TestPlainDropPartition()
+	TestPlainAddPartition()
+	TestPlainTruncatePartition()
+}
+
 func main() {
 	// Single
 	//TestPerformance(10, 1, 0)
@@ -402,7 +478,9 @@ func main() {
 	//TODO
 	//TestOncall3996()
 
-	TestOncall3793()
+	//TestOncall3793()
+
+	TestPlain()
 
 	//x := uint64(429772939013390339)
 	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
