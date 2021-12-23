@@ -29,7 +29,7 @@ func GetDB() *sql.DB {
 	return db
 }
 
-func AsyncStmtEx(ctx context.Context, name string, threads int, db *sql.DB, producer func(*chan []string), consumer func(int, *[]string)) {
+func AsyncStmtEx(ctx context.Context, name string, threads int, db *sql.DB, producer func(*chan []string), consumer func(int, *[]string)) time.Duration {
 	start := time.Now()
 	ch := make(chan []string, threads+10)
 	var wg sync.WaitGroup
@@ -56,7 +56,56 @@ func AsyncStmtEx(ctx context.Context, name string, threads int, db *sql.DB, prod
 	producer(&ch)
 	close(ch)
 	wg.Wait()
-	fmt.Printf("OK %v %v \v", name, time.Since(start))
+	elapsed := time.Since(start)
+	fmt.Printf("OK %v %v \v", name, elapsed.Seconds())
+	return elapsed
+}
+
+func AsyncStmtEx2(ctx context.Context, name string, threads int, db *sql.DB, producer func(*chan []string), consumer func(int, *[]string), waiter []func(int)) (time.Duration, map[int]time.Duration) {
+	start := time.Now()
+	ch := make(chan []string, threads+10)
+	var wg sync.WaitGroup
+	for i := 0; i < threads; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer func() {
+				wg.Done()
+			}()
+			for {
+				select {
+				case s, ok := <-ch:
+					if ok {
+						consumer(index, &s)
+					} else {
+						return
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}(i)
+	}
+	producer(&ch)
+
+	var td map[int] time.Duration
+	for index, f := range waiter {
+		wg.Add(1)
+		go func(i int) {
+			defer func() {
+				wg.Done()
+			}()
+			start := time.Now()
+			f(i)
+			end := time.Since(start)
+			td[index] = end
+		}(index)
+	}
+
+	close(ch)
+	wg.Wait()
+	elapsed := time.Since(start)
+	fmt.Printf("OK %v %v \v", name, elapsed.Seconds())
+	return elapsed, td
 }
 
 func AsyncStmt(ctx context.Context, name string, threads int, db *sql.DB, insert func(*chan []string)) {
@@ -73,7 +122,7 @@ func AsyncStmt(ctx context.Context, name string, threads int, db *sql.DB, insert
 }
 
 
-func TestOncall3996() {
+func TestOncall3996(N int, Replica int) {
 	db := GetDB()
 
 	maxTick := 0
@@ -82,7 +131,7 @@ func TestOncall3996() {
 	MustExec(db, "create database test99")
 
 	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
-	MustExec(db, "alter table test99.addpartition set tiflash replica 1")
+	MustExec(db, "alter table test99.addpartition set tiflash replica %v", Replica)
 	if ok, tick := WaitTableOK(db, "addpartition", 10, ""); ok {
 		if tick > maxTick {
 			maxTick = tick
@@ -91,11 +140,12 @@ func TestOncall3996() {
 
 	start := time.Now()
 	var wg sync.WaitGroup
-	M := 100
-	timeout := 40
+	S := 40
+	M := S + N
+	timeout := 100
 	go func() {
 		wg.Add(1)
-		for lessThan := 40; lessThan < M; lessThan += 1 {
+		for lessThan := S; lessThan < M; lessThan += 1 {
 			MustExec(db, "ALTER TABLE test99.addpartition ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", lessThan, lessThan)
 			if ok, tick := WaitTableOK(db, "addpartition", timeout, strconv.Itoa(lessThan)); ok {
 				if tick > maxTick {
@@ -106,13 +156,13 @@ func TestOncall3996() {
 		wg.Done()
 	}()
 
-	for i := 40; i < M; i += 1 {
+	for i := S; i < M; i += 1 {
 		y := i
 		wg.Add(1)
 		go func() {
 			fmt.Printf("Handle %v\n", y)
 			MustExec(db, "create table test99.tb%v(z int)", y)
-			MustExec(db, "alter table test99.tb%v set tiflash replica 1", y)
+			MustExec(db, "alter table test99.tb%v set tiflash replica %v", y, Replica)
 			if ok, tick := WaitTableOK(db, fmt.Sprintf("tb%v", y), timeout, ""); ok {
 				if tick > maxTick {
 					maxTick = tick
@@ -124,7 +174,7 @@ func TestOncall3996() {
 
 	wg.Wait()
 	db.Close()
-	fmt.Printf("maxTick %v elapsed %v\n", maxTick, time.Since(start))
+	fmt.Printf("maxTick %v elapsed %v\n", maxTick, time.Since(start).Seconds())
 }
 
 
@@ -149,8 +199,8 @@ func TestOncal3996_1() {
 		}
 	}
 
-
-	lessThan := "40"
+	S := 40
+	lessThan := fmt.Sprintf("%v", S)
 	MustExec(db, "ALTER TABLE test99.tbl168 ADD PARTITION (PARTITION pn VALUES LESS THAN (%v))", lessThan)
 	MustExec(db, "alter table test99.victim166 set tiflash replica 1")
 	fmt.Println("Wait 166")
@@ -206,8 +256,85 @@ func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {
 	}
 }
 
+func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
+	runtime.GOMAXPROCS(T)
+	ctx := context.Background()
+	db := GetDB()
+	defer db.Close()
+
+	fCreate := func(ch *chan []string) {
+		for i := 0; i < C; i++ {
+			*ch <- []string{fmt.Sprintf("create table test99.t%v(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (-10))", i)}
+		}
+	}
+	AsyncStmt(ctx, "create", 10, db, fCreate)
+
+	fAlter := func(ch *chan []string) {
+		for i := 0; i < C; i++ {
+			*ch <- []string{
+				fmt.Sprintf("alter table test99.t%v set tiflash replica %v", i, Replica)}
+		}
+	}
+	AsyncStmt(ctx, "alter", 10, db, fAlter)
+
+
+	collect := make([]time.Duration, 0)
+	collect2 := make([]time.Duration, 0)
+	fCommander := func(ch *chan []string) {
+		for i := 0; i < C; i++ {
+			var s = make([]string, 0)
+			y := i
+			for j := 0; j < P; j ++ {
+				z := j * 10
+				ss := fmt.Sprintf("alter table test99.t%v add partition (PARTITION pn%v VALUES LESS THAN (%v))", y, z, z)
+				fmt.Printf("Add %v of %v/%v\n", ss, j, P)
+				s = append(s, ss)
+			}
+			ss := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = 't%v';", y)
+			s = append(s, ss)
+			*ch <- s
+		}
+	}
+	fRunner := func(index int, s *[]string) {
+		var x int
+		// Run ddl.
+		l := len(*s)
+		start := time.Now()
+		for i := 0; i < l - 1; i++ {
+			fmt.Printf("[index %v@%v] Handle %v length %v\n", index, time.Now(), (*s)[0], l)
+			_, err := db.Exec((*s)[i])
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		// Wait ready
+		fmt.Printf("[index %v@%v] Pending %v\n", index, time.Now(), (*s)[0])
+		start2 := time.Now()
+		for {
+			row := db.QueryRow((*s)[l-1])
+			if err := row.Scan(&x); err != nil {
+				panic(err)
+			}
+
+			if x == 1 {
+				t := time.Since(start)
+				t2 := time.Since(start2)
+				fmt.Printf("[index %v@%v] Finish %v Cost(alter+sync) %v Cost(sync) %v\n", index, time.Now(), (*s)[0], t, t2)
+				collect = append(collect, t)
+				collect2 = append(collect2, t2)
+				runtime.Gosched()
+				return
+			}
+			runtime.Gosched()
+		}
+	}
+	elapsed := AsyncStmtEx(ctx, "replica", T, db, fCommander, fRunner)
+	Summary(&collect, &collect2, elapsed)
+}
+
 func TestPerformance(C int, T int, Offset int, Replica int) {
-	runtime.GOMAXPROCS(5)
+	runtime.GOMAXPROCS(T)
 	ctx := context.Background()
 	db := GetDB()
 	defer db.Close()
@@ -261,11 +388,11 @@ func TestPerformance(C int, T int, Offset int, Replica int) {
 			runtime.Gosched()
 		}
 	}
-	AsyncStmtEx(ctx, "replica", T, db, fCommander, fRunner)
-	Summary(&collect, &collect2)
+	elapsed := AsyncStmtEx(ctx, "replica", T, db, fCommander, fRunner)
+	Summary(&collect, &collect2, elapsed)
 }
 
-func Summary(collect *[]time.Duration, collect2 *[]time.Duration) {
+func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.Duration) {
 	fmt.Printf("Count(alter+sync) %v\n", len(*collect))
 	fmt.Printf("Count(sync) %v\n", len(*collect2))
 	total := int64(0)
@@ -280,7 +407,7 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration) {
 	for i, _ := range *collect {
 		delta += (*collect2)[i].Milliseconds() - (*collect)[i].Milliseconds()
 	}
-	fmt.Printf("Avr(alter+sync) %v Avr(sync) %v Delta %v\n", float64(total*1.0)/float64(len(*collect)), float64(total2*1.0)/float64(len(*collect2)), float64(delta*1.0)/float64(len(*collect)))
+	fmt.Printf("Avr(alter+sync)/Avr(sync)/Total  %.3fs/%.3fs/%vs Delta %v\n", float64(total*1.0)/float64(len(*collect))/1000.0, float64(total2*1.0)/float64(len(*collect2))/1000.0, elapsed.Seconds(), float64(delta*1.0)/float64(len(*collect)))
 
 }
 
@@ -312,15 +439,13 @@ func ChangeGCSafePoint(db *sql.DB, t time.Time, enable string, lifeTime string) 
 	MustExec(db, safePointSQL)
 }
 
-func TestOncall3793() {
+func TestOncall3793(C int, N int, T int, Replica int) {
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	C := 20
-
-	TestPerformance(C, 1, 0, 1)
+	TestPerformance(C, T, 0, Replica)
 
 	now := time.Now()
 	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour), "true", "1000m")
@@ -341,8 +466,7 @@ func TestOncall3793() {
 	}
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
-	deltaC := 40
-	TestPerformance(deltaC, 4, C,1 )
+	TestPerformance(N, T, C,1 )
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
 	ChangeGCSafePoint(db, now, "false", "10m0s")
@@ -501,21 +625,38 @@ func TestPlain() {
 	TestPlainAddDropTable()
 }
 
+
+func TestMultiTiFlash() {
+	//// Single
+	//TestPerformance(10, 1, 0, 2)
+	//// Multi
+	//TestPerformance(100, 10, 0, 2)
+	//TestPerformance(40, 4, 0, 2)
+	//TestPerformance(20, 2, 0, 2)
+	//TestPerformance(20, 2, 0, 2)
+
+	TestOncall3996(60, 2)
+	//TestOncall3793(200, 2)
+}
+
 func main() {
-	// Single
+	//// Single
 	//TestPerformance(10, 1, 0, 1)
-	// Multi
+	//// Multi
 	//TestPerformance(100, 10, 0, 1)
 	//TestPerformance(40, 4, 0, 1)
 	//TestPerformance(20, 2, 0, 1)
 	//TODO
-	//TestOncall3996()
+	//TestOncall3996(60, 1)
 
-	//TestOncall3793()
+	//TestOncall3793(200, 100, 10, 1)
 
 	//TestPlain()
 
-	TestPerformance(20, 2, 0, 2)
+	// 50 table add 2 partition with 10 threads
+	TestPerformanceAddPartition(50, 10, 2, 1)
+
+	//TestMultiTiFlash()
 
 	//x := uint64(429772939013390339)
 	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
