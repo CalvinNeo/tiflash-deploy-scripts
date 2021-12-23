@@ -206,7 +206,7 @@ func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {
 	}
 }
 
-func TestPerformance(C int, T int, Offset int) {
+func TestPerformance(C int, T int, Offset int, Replica int) {
 	runtime.GOMAXPROCS(5)
 	ctx := context.Background()
 	db := GetDB()
@@ -226,7 +226,7 @@ func TestPerformance(C int, T int, Offset int) {
 		for i := 0; i < C; i++ {
 			y := i
 			*ch <- []string{
-				fmt.Sprintf("alter table test99.t%v set tiflash replica 1", y + Offset),
+				fmt.Sprintf("alter table test99.t%v set tiflash replica %v", y + Offset, Replica),
 				fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = 't%v';", y + Offset),
 			}
 		}
@@ -320,7 +320,7 @@ func TestOncall3793() {
 
 	C := 20
 
-	TestPerformance(C, 1, 0)
+	TestPerformance(C, 1, 0, 1)
 
 	now := time.Now()
 	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour), "true", "1000m")
@@ -342,7 +342,7 @@ func TestOncall3793() {
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
 	deltaC := 40
-	TestPerformance(deltaC, 4, C)
+	TestPerformance(deltaC, 4, C,1 )
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
 	ChangeGCSafePoint(db, now, "false", "10m0s")
@@ -393,18 +393,49 @@ func TimeToOracleLowerBound(t time.Time) uint64 {
 	return (physical << uint64(physicalShiftBits)) + logical
 }
 
-func TestPlainAddTable() {
+func TestPlainAddTruncateTable() {
+	db := GetDB()
 
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+
+	MustExec(db, "create table test99.addtruncatetable(z int)")
+	MustExec(db, "alter table test99.addtruncatetable set tiflash replica 2")
+	maxTick := 0
+	if ok, tick := WaitTableOK(db, "addtruncatetable", 40, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+	//MustExec(db, "truncate table test99.addtruncatetable")
+	//if ok, tick := WaitTableOK(db, "addtruncatetable", 10, ""); ok {
+	//	if tick > maxTick {
+	//		maxTick = tick
+	//	}
+	//}
 }
 
 
-func TestPlainDropTable() {
+func TestPlainAddDropTable() {
+	db := GetDB()
 
-}
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
 
-
-func TestPlainTruncateTable() {
-
+	MustExec(db, "create table test99.adddroptable(z int)")
+	MustExec(db, "alter table test99.adddroptable set tiflash replica 2")
+	maxTick := 0
+	if ok, tick := WaitTableOK(db, "adddroptable", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+	MustExec(db, "drop table test99.adddroptable")
+	if ok, tick := WaitTableOK(db, "adddroptable", 10, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
 }
 
 
@@ -415,7 +446,7 @@ func TestPlainAddPartition() {
 	MustExec(db, "create database test99")
 
 	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
-	MustExec(db, "alter table test99.addpartition set tiflash replica 1")
+	MustExec(db, "alter table test99.addpartition set tiflash replica 2")
 	maxTick := 0
 	MustExec(db, "alter table test99.addpartition ADD PARTITION (PARTITION pn40 VALUES LESS THAN (40))")
 	if ok, tick := WaitTableOK(db, "addpartition", 10, ""); ok {
@@ -432,7 +463,7 @@ func TestPlainTruncatePartition() {
 	MustExec(db, "create database test99")
 
 	MustExec(db, "create table test99.truncatepartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
-	MustExec(db, "alter table test99.truncatepartition set tiflash replica 1")
+	MustExec(db, "alter table test99.truncatepartition set tiflash replica 2")
 	maxTick := 0
 
 	MustExec(db, "insert into test99.truncatepartition VALUES(9)")
@@ -451,7 +482,7 @@ func TestPlainDropPartition() {
 	MustExec(db, "create database test99")
 
 	MustExec(db, "create table test99.droppartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
-	MustExec(db, "alter table test99.droppartition set tiflash replica 1")
+	MustExec(db, "alter table test99.droppartition set tiflash replica 2")
 	maxTick := 0
 	MustExec(db, "alter table test99.droppartition drop partition p0")
 	if ok, tick := WaitTableOK(db, "droppartition", 10, ""); ok {
@@ -466,21 +497,25 @@ func TestPlain() {
 	TestPlainDropPartition()
 	TestPlainAddPartition()
 	TestPlainTruncatePartition()
+	TestPlainAddTruncateTable()
+	TestPlainAddDropTable()
 }
 
 func main() {
 	// Single
-	//TestPerformance(10, 1, 0)
+	//TestPerformance(10, 1, 0, 1)
 	// Multi
-	//TestPerformance(100, 10, 0)
-	//TestPerformance(40, 4, 0)
-	//TestPerformance(20, 2, 0)
+	//TestPerformance(100, 10, 0, 1)
+	//TestPerformance(40, 4, 0, 1)
+	//TestPerformance(20, 2, 0, 1)
 	//TODO
 	//TestOncall3996()
 
 	//TestOncall3793()
 
-	TestPlain()
+	//TestPlain()
+
+	TestPerformance(20, 2, 0, 2)
 
 	//x := uint64(429772939013390339)
 	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
