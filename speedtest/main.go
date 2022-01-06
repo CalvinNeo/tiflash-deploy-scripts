@@ -7,6 +7,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -123,6 +124,7 @@ func AsyncStmt(ctx context.Context, name string, threads int, db *sql.DB, insert
 
 
 func TestOncall3996(N int, Replica int) {
+	fmt.Println("START TestOncall3996")
 	db := GetDB()
 
 	maxTick := 0
@@ -225,9 +227,33 @@ func TestOncal3996_1() {
 
 func MustExec(db *sql.DB, f string, args ...interface{}) {
 	s := fmt.Sprintf(f, args...)
+	// fmt.Printf("MustExec %v\n", s)
 	_, err := db.Exec(s)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func WaitUntil(db *sql.DB, s string, expected int, to int) bool {
+	tick := 0
+	for {
+		select {
+		case <-time.After(1 * time.Second):
+			fmt.Printf("WaitUntil %v retry %v\n", s, tick)
+			var x int
+			s := fmt.Sprintf(s)
+			row := db.QueryRow(s)
+			if err := row.Scan(&x); err != nil {
+				panic(err)
+			}
+			tick += 1
+			if x == expected {
+				return true
+			}
+			if tick >= to {
+				return false
+			}
+		}
 	}
 }
 
@@ -257,6 +283,7 @@ func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {
 }
 
 func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
+	fmt.Println("START TestPerformanceAddPartition C %v T %v P %v R %v", C, T, P, Replica)
 	runtime.GOMAXPROCS(T)
 	ctx := context.Background()
 	db := GetDB()
@@ -334,6 +361,7 @@ func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
 }
 
 func TestPerformance(C int, T int, Offset int, Replica int) {
+	fmt.Println("START TestPerformance C %v T %v O %v R %v", C, T, Offset, Replica)
 	runtime.GOMAXPROCS(T)
 	ctx := context.Background()
 	db := GetDB()
@@ -407,7 +435,9 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.D
 	for i, _ := range *collect {
 		delta += (*collect2)[i].Milliseconds() - (*collect)[i].Milliseconds()
 	}
-	fmt.Printf("Avr(alter+sync)/Avr(sync)/Total  %.3fs/%.3fs/%vs Delta %v\n", float64(total*1.0)/float64(len(*collect))/1000.0, float64(total2*1.0)/float64(len(*collect2))/1000.0, elapsed.Seconds(), float64(delta*1.0)/float64(len(*collect)))
+	l1 := len(*collect)
+	l2 := len(*collect2)
+	fmt.Printf("Avr(alter+sync)/Avr(sync)/Total  %.3fs/%.3fs/%vs Delta %v l1/l2 %v/%v\n", float64(total*1.0)/float64(l1)/1000.0, float64(total2*1.0)/float64(l2)/1000.0, elapsed.Seconds(), float64(delta*1.0)/float64(l1), l1, l2)
 
 }
 
@@ -439,7 +469,27 @@ func ChangeGCSafePoint(db *sql.DB, t time.Time, enable string, lifeTime string) 
 	MustExec(db, safePointSQL)
 }
 
+func TestTruncateTableTombstone(C int, T int, Replica int) {
+	fmt.Println("START TestTruncateTableTombstone")
+	db := GetDB()
+
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+
+	TestPerformance(C, T, 0, Replica)
+
+	now := time.Now()
+	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour), "false", "1000m")
+
+
+	for i := 0; i < C; i++ {
+		fmt.Printf("truncate table t%v\n", i)
+		MustExec(db, "truncate table test99.t%v", i)
+	}
+}
+
 func TestOncall3793(C int, N int, T int, Replica int) {
+	fmt.Println("START TestOncall3793")
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
@@ -518,6 +568,7 @@ func TimeToOracleLowerBound(t time.Time) uint64 {
 }
 
 func TestPlainAddTruncateTable() {
+	fmt.Println("START TestPlainAddTruncateTable")
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
@@ -541,6 +592,7 @@ func TestPlainAddTruncateTable() {
 
 
 func TestPlainAddDropTable() {
+	fmt.Println("START TestPlainAddDropTable")
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
@@ -554,16 +606,17 @@ func TestPlainAddDropTable() {
 			maxTick = tick
 		}
 	}
-	MustExec(db, "drop table test99.adddroptable")
-	if ok, tick := WaitTableOK(db, "adddroptable", 10, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
+	//MustExec(db, "drop table test99.adddroptable")
+	//if ok, tick := WaitTableOK(db, "adddroptable", 30, ""); ok {
+	//	if tick > maxTick {
+	//		maxTick = tick
+	//	}
+	//}
 }
 
 
 func TestPlainAddPartition() {
+	fmt.Println("START TestPlainAddPartition")
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
@@ -581,6 +634,7 @@ func TestPlainAddPartition() {
 }
 
 func TestPlainTruncatePartition() {
+	fmt.Println("START TestPlainTruncatePartition")
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
@@ -600,6 +654,7 @@ func TestPlainTruncatePartition() {
 }
 
 func TestPlainDropPartition() {
+	fmt.Println("START TestPlainDropPartition")
 	db := GetDB()
 
 	MustExec(db, "drop database test99")
@@ -616,8 +671,18 @@ func TestPlainDropPartition() {
 	}
 }
 
+func TestPlainSet0() {
+	db := GetDB()
+
+	MustExec(db, "drop database test99")
+	MustExec(db, "create database test99")
+	MustExec(db, "create table test99.r0(z int)")
+	MustExec(db, "alter table test99.r0 set tiflash replica 2")
+	MustExec(db, "alter table test99.r0 set tiflash replica 0")
+}
 
 func TestPlain() {
+	TestPlainSet0()
 	TestPlainDropPartition()
 	TestPlainAddPartition()
 	TestPlainTruncatePartition()
@@ -639,7 +704,50 @@ func TestMultiTiFlash() {
 	//TestOncall3793(200, 2)
 }
 
+
+func TestBigTable(reuse bool){
+	fmt.Println("START TestBigTable")
+	db := GetDB()
+	if !reuse {
+
+		MustExec(db, "drop database test99")
+		MustExec(db, "create database test99")
+
+		MustExec(db, "create table test99.bigtable(z int, t text)")
+
+		X := strings.Repeat("ABCDEFG", 2000)
+		total := 30000
+		for i := 0; i < total; i++ {
+			fmt.Printf("Insert %v\n", i)
+			MustExec(db, fmt.Sprintf("insert into test99.bigtable values (%v,'%v')", i, X))
+		}
+		WaitUntil(db, "select count(*) from test99.bigtable", total, 100)
+
+	}
+
+	time.Sleep(time.Second * 4)
+	var size int
+	s := fmt.Sprintf("select DATA_LENGTH as data from information_schema.TABLES where table_schema='test99' and table_name='bigtable'")
+	row := db.QueryRow(s)
+	if err := row.Scan(&size); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("!!!! %v Finish size %v MB\n", size, float64(size) / 1024.0 / 1024.0)
+	MustExec(db, "alter table test99.bigtable set tiflash replica 1")
+	maxTick := 0
+	if ok, tick := WaitTableOK(db, "bigtable", 100, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+}
+
+
 func main() {
+	TestTruncateTableTombstone(40, 4, 1)
+	//TestBigTable(false)
+
 	//// Single
 	//TestPerformance(10, 1, 0, 1)
 	//// Multi
@@ -654,7 +762,9 @@ func main() {
 	//TestPlain()
 
 	// 50 table add 2 partition with 10 threads
-	TestPerformanceAddPartition(50, 10, 2, 1)
+	//TestPerformanceAddPartition(50, 10, 2, 1)
+
+	//TestPerformanceAddPartition(50, 10, 2, 2)
 
 	//TestMultiTiFlash()
 
@@ -662,4 +772,6 @@ func main() {
 	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
 	//fmt.Printf("%v %v %v\n", x, y, x - y)
 	//TestChannel()
+
+	//TestPlainSet0()
 }
