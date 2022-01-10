@@ -705,7 +705,7 @@ func TestMultiTiFlash() {
 }
 
 
-func TestBigTable(reuse bool){
+func TestBigTable(reuse bool, total int, Replica int){
 	fmt.Println("START TestBigTable")
 	db := GetDB()
 	if !reuse {
@@ -716,7 +716,7 @@ func TestBigTable(reuse bool){
 		MustExec(db, "create table test99.bigtable(z int, t text)")
 
 		X := strings.Repeat("ABCDEFG", 2000)
-		total := 30000
+
 		for i := 0; i < total; i++ {
 			fmt.Printf("Insert %v\n", i)
 			MustExec(db, fmt.Sprintf("insert into test99.bigtable values (%v,'%v')", i, X))
@@ -726,15 +726,16 @@ func TestBigTable(reuse bool){
 	}
 
 	time.Sleep(time.Second * 4)
-	var size int
-	s := fmt.Sprintf("select DATA_LENGTH as data from information_schema.TABLES where table_schema='test99' and table_name='bigtable'")
+	var avr_size int
+	s := fmt.Sprintf("select AVG_ROW_LENGTH from information_schema.TABLES where table_schema='test99' and table_name='bigtable'")
 	row := db.QueryRow(s)
-	if err := row.Scan(&size); err != nil {
+	if err := row.Scan(&avr_size); err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("!!!! %v Finish size %v MB\n", size, float64(size) / 1024.0 / 1024.0)
-	MustExec(db, "alter table test99.bigtable set tiflash replica 1")
+	size := avr_size * total
+	fmt.Printf("!!!! avr_size %v Finish size %v MB\n", avr_size, float64(size) / 1024.0 / 1024.0)
+	MustExec(db, "alter table test99.bigtable set tiflash replica %v", Replica)
 	maxTick := 0
 	if ok, tick := WaitTableOK(db, "bigtable", 100, ""); ok {
 		if tick > maxTick {
@@ -745,8 +746,9 @@ func TestBigTable(reuse bool){
 
 
 func main() {
-	TestTruncateTableTombstone(40, 4, 1)
-	//TestBigTable(false)
+	//TestTruncateTableTombstone(40, 4, 1)
+	//TestBigTable(false, 30000, 1)
+	TestBigTable(false, 30000, 1)
 
 	//// Single
 	//TestPerformance(10, 1, 0, 1)
