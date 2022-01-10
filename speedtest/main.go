@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"io"
+	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -18,15 +24,15 @@ func GetDB() *sql.DB {
 		panic(err)
 	}
 
-	_, err = db.Exec("DROP DATABASE IF EXISTS test99")
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Exec("CREATE DATABASE test99")
-	if err != nil {
-		panic(err)
-	}
+	//_, err = db.Exec("DROP DATABASE IF EXISTS test99 if exists")
+	//if err != nil {
+	//	panic(err)
+	//}
+	//
+	//_, err = db.Exec("CREATE DATABASE test99")
+	//if err != nil {
+	//	panic(err)
+	//}
 	return db
 }
 
@@ -123,16 +129,17 @@ func AsyncStmt(ctx context.Context, name string, threads int, db *sql.DB, insert
 }
 
 
-func TestOncall3996(N int, Replica int) {
+func TestOncall3996(N int, Replica int) bool {
 	fmt.Println("START TestOncall3996")
 	db := GetDB()
 
+	failed := 0
 	maxTick := 0
 
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
+	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10))")
 	MustExec(db, "alter table test99.addpartition set tiflash replica %v", Replica)
 	if ok, tick := WaitTableOK(db, "addpartition", 10, ""); ok {
 		if tick > maxTick {
@@ -147,12 +154,16 @@ func TestOncall3996(N int, Replica int) {
 	timeout := 100
 	go func() {
 		wg.Add(1)
+		db1 := db
+		//defer db1.Close()
 		for lessThan := S; lessThan < M; lessThan += 1 {
-			MustExec(db, "ALTER TABLE test99.addpartition ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", lessThan, lessThan)
-			if ok, tick := WaitTableOK(db, "addpartition", timeout, strconv.Itoa(lessThan)); ok {
+			MustExec(db1, "ALTER TABLE test99.addpartition ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", lessThan, lessThan)
+			if ok, tick := WaitTableOK(db1, "addpartition", timeout, strconv.Itoa(lessThan)); ok {
 				if tick > maxTick {
 					maxTick = tick
 				}
+			} else {
+				failed += 1
 			}
 		}
 		wg.Done()
@@ -162,13 +173,17 @@ func TestOncall3996(N int, Replica int) {
 		y := i
 		wg.Add(1)
 		go func() {
+			db1 := db
+			//defer db1.Close()
 			fmt.Printf("Handle %v\n", y)
-			MustExec(db, "create table test99.tb%v(z int)", y)
-			MustExec(db, "alter table test99.tb%v set tiflash replica %v", y, Replica)
-			if ok, tick := WaitTableOK(db, fmt.Sprintf("tb%v", y), timeout, ""); ok {
+			MustExec(db1, "create table test99.tb%v(z int)", y)
+			MustExec(db1, "alter table test99.tb%v set tiflash replica %v", y, Replica)
+			if ok, tick := WaitTableOK(db1, fmt.Sprintf("tb%v", y), timeout, ""); ok {
 				if tick > maxTick {
 					maxTick = tick
 				}
+			} else {
+				failed += 1
 			}
 			wg.Done()
 		}()
@@ -177,57 +192,19 @@ func TestOncall3996(N int, Replica int) {
 	wg.Wait()
 	db.Close()
 	fmt.Printf("maxTick %v elapsed %v\n", maxTick, time.Since(start).Seconds())
+
+	return failed == 0
 }
 
-
-
-func TestOncal3996_1() {
-	// tbl168 will block victim166
-	db := GetDB()
-	defer db.Close()
-
-	MustExec(db, "drop table if exists test99.victim166")
-	MustExec(db, "create table test99.victim166(z int)")
-
-	MustExec(db, "drop table if exists test99.tbl168")
-	MustExec(db, "create table test99.tbl168(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
-	MustExec(db, "alter table test99.tbl168 set tiflash replica 1")
-
-	fmt.Println("Wait tbl168")
-	maxTick := 0
-	if ok, tick := WaitTableOK(db, "tbl168", 10, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-
-	S := 40
-	lessThan := fmt.Sprintf("%v", S)
-	MustExec(db, "ALTER TABLE test99.tbl168 ADD PARTITION (PARTITION pn VALUES LESS THAN (%v))", lessThan)
-	MustExec(db, "alter table test99.victim166 set tiflash replica 1")
-	fmt.Println("Wait 166")
-	if b, tick := WaitTableOK(db, "victim166", 15, ""); !b {
-		fmt.Println("Error!")
-		return
-	} else {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-	fmt.Println("Wait 168")
-	if b, tick := WaitTableOK(db, "tbl168", 15, ""); !b {
-		fmt.Println("Error!")
-		return
-	} else {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
+func Exec(db *sql.DB, f string, args ...interface{}) {
+	s := fmt.Sprintf(f, args...)
+	fmt.Printf("MustExec %v\n", s)
+	_, _ = db.Exec(s)
 }
 
 func MustExec(db *sql.DB, f string, args ...interface{}) {
 	s := fmt.Sprintf(f, args...)
-	// fmt.Printf("MustExec %v\n", s)
+	fmt.Printf("MustExec %v\n", s)
 	_, err := db.Exec(s)
 	if err != nil {
 		panic(err)
@@ -360,7 +337,7 @@ func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
 	Summary(&collect, &collect2, elapsed)
 }
 
-func TestPerformance(C int, T int, Offset int, Replica int) {
+func TestPerformance(C int, T int, Offset int, Replica int) string {
 	fmt.Println("START TestPerformance C %v T %v O %v R %v", C, T, Offset, Replica)
 	runtime.GOMAXPROCS(T)
 	ctx := context.Background()
@@ -417,12 +394,12 @@ func TestPerformance(C int, T int, Offset int, Replica int) {
 		}
 	}
 	elapsed := AsyncStmtEx(ctx, "replica", T, db, fCommander, fRunner)
-	Summary(&collect, &collect2, elapsed)
+
+	fmt.Println("START ", )
+	return fmt.Sprintf("TestPerformance C %v T %v O %v R %v\n%v", C, T, Offset, Replica, Summary(&collect, &collect2, elapsed))
 }
 
-func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.Duration) {
-	fmt.Printf("Count(alter+sync) %v\n", len(*collect))
-	fmt.Printf("Count(sync) %v\n", len(*collect2))
+func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.Duration) string {
 	total := int64(0)
 	for _, t := range *collect {
 		total += t.Milliseconds()
@@ -437,41 +414,67 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.D
 	}
 	l1 := len(*collect)
 	l2 := len(*collect2)
-	fmt.Printf("Avr(alter+sync)/Avr(sync)/Total  %.3fs/%.3fs/%vs Delta %v l1/l2 %v/%v\n", float64(total*1.0)/float64(l1)/1000.0, float64(total2*1.0)/float64(l2)/1000.0, elapsed.Seconds(), float64(delta*1.0)/float64(l1), l1, l2)
+	S1 := fmt.Sprintf("Count(alter+sync) %v\nCount(sync) %v\n", len(*collect), len(*collect2))
+	S2 := fmt.Sprintf("Avr(alter+sync)/Avr(sync)/Total  %.3fs/%.3fs/%vs Delta %v l1/l2 %v/%v\n", float64(total*1.0)/float64(l1)/1000.0, float64(total2*1.0)/float64(l2)/1000.0, elapsed.Seconds(), float64(delta*1.0)/float64(l1), l1, l2)
+	S := fmt.Sprintf("%v%v", S1, S2)
+	fmt.Printf("%v", S)
+	return S
+}
 
+
+func ChangeGCSafeState(db *sql.DB, last time.Time, interval string) {
+	gcTimeFormat := "20060102-15:04:05 -0700 MST"
+	lastSafePoint := last.Format(gcTimeFormat)
+
+	s := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_last_run_time', '%[1]s', '')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '%[1]s'`
+
+	s = fmt.Sprintf(s, lastSafePoint)
+	fmt.Printf("lastRun %v\n", s)
+	MustExec(db, s)
+
+	s = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_run_interval', '%[1]s', '')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '%[1]s'`
+
+	s = fmt.Sprintf(s, interval)
+	fmt.Printf("Interval %v\n", s)
+	MustExec(db, s)
 }
 
 func ChangeGCSafePoint(db *sql.DB, t time.Time, enable string, lifeTime string) {
 	gcTimeFormat := "20060102-15:04:05 -0700 MST"
 	lastSafePoint := t.Format(gcTimeFormat)
-	safePointSQL := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_safe_point', '%[1]s', '')
+	s := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_safe_point', '%[1]s', '')
 			       ON DUPLICATE KEY
 			       UPDATE variable_value = '%[1]s'`
 
-	safePointSQL = fmt.Sprintf(safePointSQL, lastSafePoint)
-	fmt.Printf("lastSafePoint %v\n", safePointSQL)
-	MustExec(db, safePointSQL)
+	s = fmt.Sprintf(s, lastSafePoint)
+	fmt.Printf("lastSafePoint %v\n", s)
+	MustExec(db, s)
 
 
-	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_enable','%[1]s','')
+	s = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_enable','%[1]s','')
 			       ON DUPLICATE KEY
 			       UPDATE variable_value = '%[1]s'`
-	safePointSQL = fmt.Sprintf(safePointSQL, enable)
-	fmt.Printf("enable %v\n", safePointSQL)
-	MustExec(db, safePointSQL)
+	s = fmt.Sprintf(s, enable)
+	fmt.Printf("enable %v\n", s)
+	MustExec(db, s)
 
 
-	safePointSQL = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_life_time','%[1]s','')
+	s = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_life_time','%[1]s','')
 			       ON DUPLICATE KEY
 			       UPDATE variable_value = '%[1]s'`
-	safePointSQL = fmt.Sprintf(safePointSQL, lifeTime)
-	fmt.Printf("lifeTime %v\n", safePointSQL)
-	MustExec(db, safePointSQL)
+	s = fmt.Sprintf(s, lifeTime)
+	fmt.Printf("lifeTime %v\n", s)
+	MustExec(db, s)
 }
 
 func TestTruncateTableTombstone(C int, T int, Replica int) {
 	fmt.Println("START TestTruncateTableTombstone")
 	db := GetDB()
+	defer db.Close()
 
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
@@ -491,6 +494,7 @@ func TestTruncateTableTombstone(C int, T int, Replica int) {
 func TestOncall3793(C int, N int, T int, Replica int) {
 	fmt.Println("START TestOncall3793")
 	db := GetDB()
+	defer db.Close()
 
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
@@ -521,28 +525,6 @@ func TestOncall3793(C int, N int, T int, Replica int) {
 
 	ChangeGCSafePoint(db, now, "false", "10m0s")
 }
-
-//var c chan int
-//
-//func TestChannel() {
-//	go func () {
-//		for {
-//			select {
-//				case i, ok := <- c:
-//					if ok {
-//						fmt.Printf("OK %v\n", i)
-//					}else {
-//						break
-//					}
-//					default:
-//			}
-//		}
-//
-//		select
-//	}()
-//
-//}
-
 
 const (
 	physicalShiftBits = 18
@@ -582,14 +564,13 @@ func TestPlainAddTruncateTable() {
 			maxTick = tick
 		}
 	}
-	//MustExec(db, "truncate table test99.addtruncatetable")
-	//if ok, tick := WaitTableOK(db, "addtruncatetable", 10, ""); ok {
-	//	if tick > maxTick {
-	//		maxTick = tick
-	//	}
-	//}
 }
 
+func RandomWrite(db *sql.DB, table string, n int, start int) {
+	for i := start; i < start + n; i++{
+		MustExec(db, "insert into test99.%v values (%v)", table, i)
+	}
+}
 
 func TestPlainAddDropTable() {
 	fmt.Println("START TestPlainAddDropTable")
@@ -606,12 +587,14 @@ func TestPlainAddDropTable() {
 			maxTick = tick
 		}
 	}
-	//MustExec(db, "drop table test99.adddroptable")
-	//if ok, tick := WaitTableOK(db, "adddroptable", 30, ""); ok {
-	//	if tick > maxTick {
-	//		maxTick = tick
-	//	}
-	//}
+	RandomWrite(db, "adddroptable", 100, 1)
+	MustExec(db, "drop table test99.adddroptable")
+	MustExec(db, "flashback table test99.adddroptable")
+	if ok, tick := WaitTableOK(db, "adddroptable", 30, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
 }
 
 
@@ -622,7 +605,7 @@ func TestPlainAddPartition() {
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
+	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10))")
 	MustExec(db, "alter table test99.addpartition set tiflash replica 2")
 	maxTick := 0
 	MustExec(db, "alter table test99.addpartition ADD PARTITION (PARTITION pn40 VALUES LESS THAN (40))")
@@ -640,7 +623,7 @@ func TestPlainTruncatePartition() {
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	MustExec(db, "create table test99.truncatepartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
+	MustExec(db, "create table test99.truncatepartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10))")
 	MustExec(db, "alter table test99.truncatepartition set tiflash replica 2")
 	maxTick := 0
 
@@ -651,6 +634,8 @@ func TestPlainTruncatePartition() {
 			maxTick = tick
 		}
 	}
+
+
 }
 
 func TestPlainDropPartition() {
@@ -682,6 +667,10 @@ func TestPlainSet0() {
 }
 
 func TestPlain() {
+	db := GetDB()
+	defer db.Close()
+	ChangeGCSafePoint(db, time.Now(), "true", "10m0s")
+	ChangeGCSafeState(db, time.Now(), "10m")
 	TestPlainSet0()
 	TestPlainDropPartition()
 	TestPlainAddPartition()
@@ -744,24 +733,465 @@ func TestBigTable(reuse bool, total int, Replica int){
 	}
 }
 
+type PDHelper struct {
+	PDAddr string
+	InternalHTTPClient *http.Client
+	InternalHTTPSchema string
+}
+
+func NewPDHelper(addr string) *PDHelper{
+	return &PDHelper{
+		PDAddr: addr,
+		InternalHTTPSchema: "http",
+		InternalHTTPClient: http.DefaultClient,
+	}
+}
+
+type Constraints []Constraint
+
+type ConstraintOp string
+
+// Constraint is used to filter store when trying to place peer of a region.
+type Constraint struct {
+	Key    string       `json:"key,omitempty"`
+	Op     ConstraintOp `json:"op,omitempty"`
+	Values []string     `json:"values,omitempty"`
+}
+
+type PeerRoleType string
+
+// TiFlashRule extends Rule with other necessary fields.
+type TiFlashRule struct {
+	GroupID        string       `json:"group_id"`
+	ID             string       `json:"id"`
+	Index          int          `json:"index,omitempty"`
+	Override       bool         `json:"override,omitempty"`
+	StartKeyHex    string       `json:"start_key"`
+	EndKeyHex      string       `json:"end_key"`
+	Role           PeerRoleType `json:"role"`
+	Count          int          `json:"count"`
+	Constraints    Constraints  `json:"label_constraints,omitempty"`
+	LocationLabels []string     `json:"location_labels,omitempty"`
+	IsolationLevel string       `json:"isolation_level,omitempty"`
+}
+
+// GetGroupRules to get all placement rule in a certain group.
+func (h *PDHelper) GetGroupRules(group string) ([]TiFlashRule, error) {
+	pdAddr := h.PDAddr
+
+	getURL := fmt.Sprintf("%s://%s/pd/api/v1/config/rules/group/%s",
+		h.InternalHTTPSchema,
+		pdAddr,
+		group,
+	)
+
+	resp, err := h.InternalHTTPClient.Get(getURL)
+	if err != nil {
+		return nil, errors.New("fail get")
+	}
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("GetGroupRules returns error")
+	}
+
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(resp.Body)
+	if err != nil {
+		return nil, errors.New("fail read")
+	}
+
+	var rules []TiFlashRule
+	err = json.Unmarshal(buf.Bytes(), &rules)
+	if err != nil {
+		return nil, errors.New("fail parse")
+	}
+
+	return rules, nil
+}
+
+func (h *PDHelper) ClearAllRules(group string) {
+	rules, err := h.GetGroupRules("tiflash")
+	if err != nil {
+		panic(err)
+	}
+	for _, r := range rules {
+		h.DeletePlacementRule(group, r.ID)
+	}
+}
+
+func (h *PDHelper) DeletePlacementRule(group string, ruleID string) error {
+	deleteURL := fmt.Sprintf("%s://%s/pd/api/v1/config/rule/%v/%v",
+		h.InternalHTTPSchema,
+		h.PDAddr,
+		group,
+		ruleID,
+	)
+
+	req, err := http.NewRequest("DELETE", deleteURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := h.InternalHTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("DeletePlacementRule returns error")
+	}
+	return nil
+}
+
+func (h *PDHelper) GetGroupRulesCount(group string) int  {
+	rules, err := h.GetGroupRules("tiflash")
+	if err != nil {
+		panic(err)
+	}
+	return len(rules)
+}
+
+func PrintPD() {
+	pd := NewPDHelper("127.0.0.1:2379")
+	rules, err := pd.GetGroupRules("tiflash")
+
+	if err != nil {
+		panic(err)
+	}
+
+	rules, err = pd.GetGroupRules("tiflash")
+	if err != nil {
+		panic(err)
+	}
+	laterRule := len(rules)
+	fmt.Printf("count %v\n", laterRule)
+	for _, r := range rules {
+		fmt.Printf("==> In %v\n", r.ID)
+	}
+}
+
+func TestPlacementRules() {
+	pd := NewPDHelper("127.0.0.1:2379")
+	rules, err := pd.GetGroupRules("tiflash")
+
+	if err != nil {
+		panic(err)
+	}
+
+	oriRule := len(rules)
+	fmt.Printf("origin %v\n", oriRule)
+
+	N := 10
+	TestOncall3996(N, 1)
+
+	// N new partitions + N new tables + 1 origin partition
+	expectedCount := N + N + 1
+	rules, err = pd.GetGroupRules("tiflash")
+	if err != nil {
+		panic(err)
+	}
+	laterRule := len(rules)
+	fmt.Printf("later %v expected %v\n", laterRule, expectedCount)
+	for _, r := range rules {
+		fmt.Printf("==> In %v\n", r.ID)
+	}
+
+	db := GetDB()
+	now := time.Now()
+	fmt.Printf("begin to remove rules %v\n", time.Now())
+	// lastRun -> lastSafePoint -> delete
+	// safePoint = now - gcLfeTime
+	// should be: safePoint > lastSafePoint
+	// lastRun -> lastSafePoint -> delete
+	//							-> now - gcLifeTime
+	// -1h -> -20m ->
+	ChangeGCSafePoint(db, now.Add(-20 * time.Minute), "true", "10m0s")
+	ChangeGCSafeState(db, now.Add(-time.Hour), "1s")
+	time.Sleep(2 * time.Second)
+	fmt.Printf("begin to delete %v\n", time.Now())
+	MustExec(db, "drop database test99")
+	fmt.Printf("begin to wait %v\n", time.Now())
+	time.Sleep(10 * time.Second)
+	fmt.Printf("end wait %v\n", time.Now())
+
+	rules, err = pd.GetGroupRules("tiflash")
+	if err != nil {
+		panic(err)
+	}
+	deletedRule := len(rules)
+	fmt.Printf("delete %v expected %v\n", deletedRule, oriRule)
+	for _, r := range rules {
+		fmt.Printf("==> In %v\n", r.ID)
+	}
+	if deletedRule != oriRule {
+		panic("Fail TestPlacementRules")
+	}
+}
+
+func checkFileIsExist(filename string) bool {
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func Routine() {
+	filename := "result.txt"
+	f, _ := os.Create(filename)
+	defer f.Close()
+	s := ""
+	// Single
+	s = TestPerformance(10, 1, 0, 1)
+	_, _ = io.WriteString(f, s)
+	// Multi
+	TestPerformance(100, 10, 0, 1)
+	_, _ = io.WriteString(f, s)
+	TestPerformance(40, 4, 0, 1)
+	_, _ = io.WriteString(f, s)
+	TestPerformance(20, 2, 0, 1)
+	_, _ = io.WriteString(f, s)
+
+	Ns := []int{60}
+	Replicas := []int{1, 2}
+	for _, Replica := range Replicas {
+		for _, N := range Ns{
+			if TestOncall3996(N, Replica) {
+				io.WriteString(f, fmt.Sprintf("TestOncall3996 %v OK\n", N, Replica))
+			}else {
+				io.WriteString(f, fmt.Sprintf("TestOncall3996 %v FAIL\n", N, Replica))
+			}
+		}
+		TestOncall3793(200, 100, 10, 1)
+	}
+
+}
+
+type Table struct {
+	Dropped bool
+	RuleCount int
+	PartitionRuleCount *map[int]int
+	PartitionDropped *map[int]bool
+}
+
+type Tables struct {
+	sync.Mutex
+
+	Ts map[int]*Table
+	Replica int
+}
+
+func (t *Tables) AddTable(db *sql.DB, partition bool) []string {
+	t.Lock()
+	defer t.Unlock()
+
+	n := len(t.Ts)
+	if partition {
+		m := make(map[int]int)
+		m[0] = 1
+		m2 := make(map[int]bool)
+		m2[0] = false
+		t.Ts[n] = &Table{
+			Dropped:            false,
+			RuleCount:          1,
+			PartitionRuleCount: &m,
+			PartitionDropped:   &m2,
+		}
+		ss := []string{fmt.Sprintf("create table test98.t%v (z int) partition by range (z) (partition p0 values less than (0))", n),
+			fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica)}
+		for _, e := range ss {
+			MustExec(db, e)
+		}
+		return ss
+	} else {
+		t.Ts[n] = &Table{
+			Dropped:            false,
+			RuleCount:          1,
+			PartitionRuleCount: nil,
+			PartitionDropped:   nil,
+		}
+		ss := []string{fmt.Sprintf("create table test98.t%v (z int)", n),
+			fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica)}
+		for _, e := range ss {
+			MustExec(db, e)
+		}
+		return ss
+	}
+}
+
+func (t *Tables) TruncateTable(db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if !v.Dropped {
+			if v.PartitionRuleCount != nil {
+				for kk := range *v.PartitionRuleCount {
+					if !(*v.PartitionDropped)[kk] {
+						(*v.PartitionRuleCount)[kk] += 1
+					}
+				}
+			}else{
+				v.RuleCount += 1
+			}
+		}
+		s := fmt.Sprintf("truncate table test98.t%v", k)
+		MustExec(db, s)
+		return s
+	}
+	return ""
+}
+
+func (t *Tables) AddPartition(db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if v.PartitionRuleCount != nil {
+			n := len(*(v.PartitionRuleCount))
+			(*(v.PartitionRuleCount))[n] = 1
+			(*(v.PartitionDropped))[n] = false
+			s := fmt.Sprintf("alter table test98.t%v add partition (partition p%v values less than (%v))", k, n, n * 10)
+			MustExec(db, s)
+			return s
+		}
+	}
+	return ""
+}
+
+func (t *Tables) TruncatePartition(db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if v.PartitionRuleCount != nil {
+			for kk := range *v.PartitionRuleCount {
+				if !(*v.PartitionDropped)[kk] {
+					(*v.PartitionRuleCount)[kk] += 1
+					s := fmt.Sprintf("alter table test98.t%v truncate partition p%v", k, kk)
+					MustExec(db, s)
+					return s
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (t *Tables) DropPartition(db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if v.PartitionRuleCount != nil {
+			for kk := range *v.PartitionRuleCount {
+				if !(*v.PartitionDropped)[kk] {
+					(*v.PartitionDropped)[kk] = true
+					s := fmt.Sprintf("alter table test98.t%v drop partition p%v", k, kk)
+					// Cannot remove all partitions, use DROP TABLE instead
+					Exec(db, s)
+					return s
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (t *Tables) DropTable(db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k := range t.Ts {
+		if !t.Ts[k].Dropped {
+			t.Ts[k].Dropped = true
+			s := fmt.Sprintf("drop table test98.t%v", k)
+			MustExec(db, s)
+			return s
+		}
+	}
+	return ""
+}
+
+func (t *Tables) Check(delta int) bool {
+	rules := 0
+	for _, v := range t.Ts {
+		if v.PartitionRuleCount != nil {
+			for kk := range *v.PartitionRuleCount {
+				rules += (*v.PartitionRuleCount)[kk]
+			}
+		} else {
+			rules += v.RuleCount
+		}
+	}
+
+
+	fmt.Printf("actual %v expected %v\n", delta, rules)
+	return true
+}
+
+func TestPDRuleMultiSession(T int, Replica int) {
+	dbm := GetDB()
+	MustExec(dbm, "drop database if exists test98")
+	MustExec(dbm, "create database test98")
+	dbm.Close()
+	time.Sleep(2 * time.Second)
+
+	pd := NewPDHelper("127.0.0.1:2379")
+	pd.ClearAllRules("tiflash")
+
+	origin := pd.GetGroupRulesCount("tiflash")
+	tables := Tables{
+		Ts: make(map[int]*Table),
+		Replica: Replica,
+	}
+
+	var wg sync.WaitGroup
+	for t := 0; t < T; t++ {
+		wg.Add(1)
+		y := t
+		go func(index int) {
+			db := GetDB()
+			defer db.Close()
+
+			tables.AddTable(db, false)
+			tables.AddTable(db,true)
+			tables.AddPartition(db)
+			tables.AddPartition(db)
+			tables.TruncatePartition(db)
+			tables.DropPartition(db)
+			tables.DropTable(db)
+
+			wg.Done()
+		}(y)
+	}
+	wg.Wait()
+
+	later := pd.GetGroupRulesCount("tiflash")
+	tables.Check(later - origin)
+}
 
 func main() {
+	TestPDRuleMultiSession(5, 1)
+	//TestPlain()
+	//TestPlacementRules()
+
+	//PrintPD()
+
 	//TestTruncateTableTombstone(40, 4, 1)
 	//TestBigTable(false, 30000, 1)
-	TestBigTable(false, 30000, 1)
+	//TestBigTable(false, 30000, 1)
 
-	//// Single
-	//TestPerformance(10, 1, 0, 1)
-	//// Multi
-	//TestPerformance(100, 10, 0, 1)
-	//TestPerformance(40, 4, 0, 1)
-	//TestPerformance(20, 2, 0, 1)
 	//TODO
-	//TestOncall3996(60, 1)
 
-	//TestOncall3793(200, 100, 10, 1)
-
-	//TestPlain()
+	// TestPlain()
 
 	// 50 table add 2 partition with 10 threads
 	//TestPerformanceAddPartition(50, 10, 2, 1)
@@ -773,7 +1203,6 @@ func main() {
 	//x := uint64(429772939013390339)
 	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
 	//fmt.Printf("%v %v %v\n", x, y, x - y)
-	//TestChannel()
 
 	//TestPlainSet0()
 }
