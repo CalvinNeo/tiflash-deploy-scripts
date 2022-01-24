@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"runtime"
@@ -196,10 +199,11 @@ func TestOncall3996(N int, Replica int) bool {
 	return failed == 0
 }
 
-func Exec(db *sql.DB, f string, args ...interface{}) {
+func Exec(db *sql.DB, f string, args ...interface{}) error {
 	s := fmt.Sprintf(f, args...)
 	fmt.Printf("MustExec %v\n", s)
-	_, _ = db.Exec(s)
+	_, err := db.Exec(s)
+	return err
 }
 
 func MustExec(db *sql.DB, f string, args ...interface{}) {
@@ -228,6 +232,30 @@ func WaitUntil(db *sql.DB, s string, expected int, to int) bool {
 				return true
 			}
 			if tick >= to {
+				return false
+			}
+		}
+	}
+}
+
+func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string) bool {
+	tick := 0
+	for {
+		select {
+		case <-time.After(1 * time.Second):
+			var x int
+			s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 0 and table_schema = '%v';", dbn)
+			row := db.QueryRow(s)
+			if err := row.Scan(&x); err != nil {
+				panic(err)
+			}
+			tick += 1
+			if x == 0 {
+				fmt.Printf("OK check db %v tag %v retry %v\n", dbn, tag, tick)
+				return true
+			}
+			if tick >= to {
+				fmt.Printf("Fail db %v count %v tag %v retry %v\n", dbn, x, tag, tick)
 				return false
 			}
 		}
@@ -549,6 +577,31 @@ func TimeToOracleLowerBound(t time.Time) uint64 {
 	return (physical << uint64(physicalShiftBits)) + logical
 }
 
+func TestPlainAddTableReplica() {
+	fmt.Println("START TestPlainAddTruncateTable")
+	db := GetDB()
+
+	MustExec(db, "drop database if exists test99")
+	MustExec(db, "create database test99")
+
+	MustExec(db, "create table test99.addreplica(z int)")
+	MustExec(db, "alter table test99.addreplica set tiflash replica 1")
+	maxTick := 0
+	if ok, tick := WaitTableOK(db, "addreplica", 40, ""); ok {
+		if tick > maxTick {
+			maxTick = tick
+		}
+	}
+
+	MustExec(db, "alter table test99.addreplica set tiflash replica 2")
+	var x int
+	s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = '%v'", "addreplica")
+	row := db.QueryRow(s)
+	if err := row.Scan(&x); err != nil {
+		panic(err)
+	}
+}
+
 func TestPlainAddTruncateTable() {
 	fmt.Println("START TestPlainAddTruncateTable")
 	db := GetDB()
@@ -659,11 +712,24 @@ func TestPlainDropPartition() {
 func TestPlainSet0() {
 	db := GetDB()
 
-	MustExec(db, "drop database test99")
+	MustExec(db, "drop database if exists test99")
 	MustExec(db, "create database test99")
 	MustExec(db, "create table test99.r0(z int)")
 	MustExec(db, "alter table test99.r0 set tiflash replica 2")
 	MustExec(db, "alter table test99.r0 set tiflash replica 0")
+
+	time.Sleep(2 * time.Second)
+
+	var x int
+	s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where table_schema = 'test99' and TABLE_NAME = '%v';", "r0")
+	row := db.QueryRow(s)
+	if err := row.Scan(&x); err != nil {
+		panic(err)
+	}
+
+	if x != 0 {
+		panic("Fail TestPlainSet0")
+	}
 }
 
 func TestPlain() {
@@ -988,7 +1054,7 @@ type Tables struct {
 	Replica int
 }
 
-func (t *Tables) AddTable(db *sql.DB, partition bool) []string {
+func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool) []string {
 	t.Lock()
 	defer t.Unlock()
 
@@ -1009,6 +1075,7 @@ func (t *Tables) AddTable(db *sql.DB, partition bool) []string {
 		for _, e := range ss {
 			MustExec(db, e)
 		}
+		t.PrintGather(pd)
 		return ss
 	} else {
 		t.Ts[n] = &Table{
@@ -1022,61 +1089,65 @@ func (t *Tables) AddTable(db *sql.DB, partition bool) []string {
 		for _, e := range ss {
 			MustExec(db, e)
 		}
+		t.PrintGather(pd)
 		return ss
 	}
 }
 
-func (t *Tables) TruncateTable(db *sql.DB) string {
+func (t *Tables) TruncateTable(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
 		if !v.Dropped {
 			if v.PartitionRuleCount != nil {
-				for kk := range *v.PartitionRuleCount {
-					if !(*v.PartitionDropped)[kk] {
+				for kk, vv := range *v.PartitionDropped {
+					if !vv {
 						(*v.PartitionRuleCount)[kk] += 1
 					}
 				}
 			}else{
 				v.RuleCount += 1
 			}
+			s := fmt.Sprintf("truncate table test98.t%v", k)
+			MustExec(db, s)
+			t.PrintGather(pd)
+			return s
 		}
-		s := fmt.Sprintf("truncate table test98.t%v", k)
-		MustExec(db, s)
-		return s
 	}
 	return ""
 }
 
-func (t *Tables) AddPartition(db *sql.DB) string {
+func (t *Tables) AddPartition(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if v.PartitionRuleCount != nil {
+		if v.PartitionRuleCount != nil && !v.Dropped {
 			n := len(*(v.PartitionRuleCount))
 			(*(v.PartitionRuleCount))[n] = 1
 			(*(v.PartitionDropped))[n] = false
 			s := fmt.Sprintf("alter table test98.t%v add partition (partition p%v values less than (%v))", k, n, n * 10)
 			MustExec(db, s)
+			t.PrintGather(pd)
 			return s
 		}
 	}
 	return ""
 }
 
-func (t *Tables) TruncatePartition(db *sql.DB) string {
+func (t *Tables) TruncatePartition(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if v.PartitionRuleCount != nil {
-			for kk := range *v.PartitionRuleCount {
-				if !(*v.PartitionDropped)[kk] {
+		if v.PartitionRuleCount != nil && !v.Dropped {
+			for kk, vv := range *v.PartitionDropped {
+				if !vv {
 					(*v.PartitionRuleCount)[kk] += 1
 					s := fmt.Sprintf("alter table test98.t%v truncate partition p%v", k, kk)
 					MustExec(db, s)
+					t.PrintGather(pd)
 					return s
 				}
 			}
@@ -1085,18 +1156,21 @@ func (t *Tables) TruncatePartition(db *sql.DB) string {
 	return ""
 }
 
-func (t *Tables) DropPartition(db *sql.DB) string {
+func (t *Tables) DropPartition(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if v.PartitionRuleCount != nil {
-			for kk := range *v.PartitionRuleCount {
-				if !(*v.PartitionDropped)[kk] {
+		if v.PartitionRuleCount != nil && !v.Dropped {
+			for kk, vv := range *v.PartitionDropped {
+				if !vv {
 					(*v.PartitionDropped)[kk] = true
 					s := fmt.Sprintf("alter table test98.t%v drop partition p%v", k, kk)
 					// Cannot remove all partitions, use DROP TABLE instead
-					Exec(db, s)
+					if err := Exec(db, s); err != nil {
+						(*v.PartitionDropped)[kk] = false
+					}
+					t.PrintGather(pd)
 					return s
 				}
 			}
@@ -1105,43 +1179,70 @@ func (t *Tables) DropPartition(db *sql.DB) string {
 	return ""
 }
 
-func (t *Tables) DropTable(db *sql.DB) string {
+func (t *Tables) DropTable(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
 	defer t.Unlock()
 
-	for k := range t.Ts {
-		if !t.Ts[k].Dropped {
+	for k, v := range t.Ts {
+		if !v.Dropped {
 			t.Ts[k].Dropped = true
 			s := fmt.Sprintf("drop table test98.t%v", k)
 			MustExec(db, s)
+			t.PrintGather(pd)
 			return s
 		}
 	}
 	return ""
 }
 
-func (t *Tables) Check(delta int) bool {
+func (t *Tables) FlashbackTable(pd *PDHelper, db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if v.Dropped {
+			t.Ts[k].Dropped = false
+			s := fmt.Sprintf("flashback table test98.t%v", k)
+			MustExec(db, s)
+			t.PrintGather(pd)
+			return s
+		}
+	}
+	return ""
+}
+
+func (t *Tables) Gather() int {
 	rules := 0
 	for _, v := range t.Ts {
 		if v.PartitionRuleCount != nil {
-			for kk := range *v.PartitionRuleCount {
-				rules += (*v.PartitionRuleCount)[kk]
+			for _, vv := range *v.PartitionRuleCount {
+				rules += vv
 			}
 		} else {
 			rules += v.RuleCount
 		}
 	}
+	return rules
+}
 
-
-	fmt.Printf("actual %v expected %v\n", delta, rules)
+func (t *Tables) Check(delta int) bool {
+	expected := t.Gather()
+	fmt.Printf("actual %v expected %v\n", delta, expected)
 	return true
+}
+
+func (t *Tables) PrintGather(pd *PDHelper){
+	e := t.Gather()
+	a := pd.GetGroupRulesCount("tiflash")
+	fmt.Printf("---> expected %v actual %v delta %v \n", e, a, e - a)
 }
 
 func TestPDRuleMultiSession(T int, Replica int) {
 	dbm := GetDB()
 	MustExec(dbm, "drop database if exists test98")
 	MustExec(dbm, "create database test98")
-	dbm.Close()
+	ChangeGCSafePoint(dbm, time.Now().Add(0 - 24 * time.Hour), "false", "1000m")
+	defer dbm.Close()
 	time.Sleep(2 * time.Second)
 
 	pd := NewPDHelper("127.0.0.1:2379")
@@ -1161,25 +1262,219 @@ func TestPDRuleMultiSession(T int, Replica int) {
 			db := GetDB()
 			defer db.Close()
 
-			tables.AddTable(db, false)
-			tables.AddTable(db,true)
-			tables.AddPartition(db)
-			tables.AddPartition(db)
-			tables.TruncatePartition(db)
-			tables.DropPartition(db)
-			tables.DropTable(db)
+			tables.AddTable(pd, db, false) // 1
+			tables.AddTable(pd, db,true) // 1
+			tables.AddPartition(pd, db) // 1
+
+			for i := 0; i < 25; i ++ {
+				in := []int{0,1,2,3,4,5,6,7}
+				randomIndex := rand.Intn(len(in))
+				pick := in[randomIndex]
+				if pick == 0 {
+					tables.AddTable(pd, db, false)
+				} else if pick == 1 {
+					tables.AddTable(pd, db, true)
+				} else if pick == 2 {
+					tables.AddPartition(pd, db)
+				} else if pick == 3 {
+					tables.DropPartition(pd, db)
+				} else if pick == 4 {
+					tables.DropTable(pd, db)
+				} else if pick == 5 {
+					tables.TruncatePartition(pd, db)
+				} else if pick == 6 {
+					tables.TruncateTable(pd, db)
+				} else if pick == 7 {
+					tables.FlashbackTable(pd, db)
+				}
+			}
 
 			wg.Done()
 		}(y)
 	}
 	wg.Wait()
 
+	if ok := WaitAllTableOK(dbm, "test98", 20, "all"); !ok {
+		panic("Some table not ready")
+	}
+
 	later := pd.GetGroupRulesCount("tiflash")
 	tables.Check(later - origin)
+
+	z, _ := pd.GetGroupRules("tiflash")
+	for _, x := range z {
+		fmt.Printf("===> %v %v %v\n", x.ID, x.GroupID, x.Constraints)
+	}
+
+	//var x int
+	//s := fmt.Sprintf("SELECT TABLE_NAME,TIDB_TABLE_ID FROM information_schema.tables where table_schema = 'test98';")
+	//row := dbm.QueryRow(s)
+	//if err := row.Scan(&x); err != nil {
+	//	panic(err)
+	//}
+	//
+	//s := fmt.Sprintf("SELECT TABLE_NAME, FROM information_schema.tables where table_schema = 'test98';")
+	//row := dbm.QueryRow(s)
+	//if err := row.Scan(&x); err != nil {
+	//	panic(err)
+	//}
+}
+
+func SetPlacementRuleForTable(dblink string, schema string, table string) {
+	db, err := sql.Open("mysql", fmt.Sprintf("root@tcp(%v)/", dblink))
+	if err != nil {
+		panic(err)
+	}
+	s := fmt.Sprintf("SELECT TIDB_TABLE_ID from information_schema.tables where TABLE_SCHEMA='%v' and TABLE_NAME='%v'", schema, table)
+
+	var x int64
+	row := db.QueryRow(s)
+	if err = row.Scan(&x); err != nil {
+		panic(err)
+	}
+
+	rule := MakeNewRule(x, 1, []string{})
+	j, _ := json.Marshal(rule)
+	buf := bytes.NewBuffer(j)
+
+	fmt.Printf("%v", buf)
+}
+
+func makeBaseRule() TiFlashRule {
+	return TiFlashRule{
+		GroupID:  "tiflash",
+		ID:       "",
+		Index:    120,
+		Override: false,
+		Role:     "learner",
+		Count:    2,
+		Constraints: []Constraint{
+			{
+				Key:    "engine",
+				Op:     "in",
+				Values: []string{"tiflash"},
+			},
+		},
+	}
+}
+var (
+	tablePrefix     = []byte{'t'}
+	recordPrefixSep = []byte("_r")
+	indexPrefixSep  = []byte("_i")
+	metaPrefix      = []byte{'m'}
+)
+
+func GenTableRecordPrefix(tableID int64) []byte {
+	buf := make([]byte, 0, len(tablePrefix)+8+len(recordPrefixSep))
+	return appendTableRecordPrefix(buf, tableID)
+}
+func EncodeTablePrefix(tableID int64) []byte {
+	var key []byte
+	key = append(key, tablePrefix...)
+	key = EncodeInt(key, tableID)
+	return key
+}
+func EncodeInt(b []byte, v int64) []byte {
+	var data [8]byte
+	u := EncodeIntToCmpUint(v)
+	binary.BigEndian.PutUint64(data[:], u)
+	return append(b, data[:]...)
+}
+func EncodeIntToCmpUint(v int64) uint64 {
+	return uint64(v) ^ signMask
+}
+func appendTableRecordPrefix(buf []byte, tableID int64) []byte {
+	buf = append(buf, tablePrefix...)
+	buf = EncodeInt(buf, tableID)
+	buf = append(buf, recordPrefixSep...)
+	return buf
+}
+
+const signMask uint64 = 0x8000000000000000
+
+// MakeNewRule creates a pd rule for TiFlash.
+func MakeNewRule(ID int64, Count uint64, LocationLabels []string) *TiFlashRule {
+	ruleID := fmt.Sprintf("table-%v-r", ID)
+	startKey := GenTableRecordPrefix(ID)
+	endKey := EncodeTablePrefix(ID + 1)
+	startKey = EncodeBytes([]byte{}, startKey)
+	endKey = EncodeBytes([]byte{}, endKey)
+
+	ruleNew := makeBaseRule()
+	ruleNew.ID = ruleID
+	ruleNew.StartKeyHex = hex.EncodeToString(startKey)
+	ruleNew.EndKeyHex = hex.EncodeToString(endKey)
+	ruleNew.Count = int(Count)
+	ruleNew.LocationLabels = LocationLabels
+
+	return &ruleNew
+}
+
+const (
+	encGroupSize = 8
+	encMarker    = byte(0xFF)
+	encPad       = byte(0x0)
+)
+
+var (
+	pads = make([]byte, encGroupSize)
+)
+
+func EncodeBytes(b []byte, data []byte) []byte {
+	// Allocate more space to avoid unnecessary slice growing.
+	// Assume that the byte slice size is about `(len(data) / encGroupSize + 1) * (encGroupSize + 1)` bytes,
+	// that is `(len(data) / 8 + 1) * 9` in our implement.
+	dLen := len(data)
+	reallocSize := (dLen/encGroupSize + 1) * (encGroupSize + 1)
+	result := reallocBytes(b, reallocSize)
+	for idx := 0; idx <= dLen; idx += encGroupSize {
+		remain := dLen - idx
+		padCount := 0
+		if remain >= encGroupSize {
+			result = append(result, data[idx:idx+encGroupSize]...)
+		} else {
+			padCount = encGroupSize - remain
+			result = append(result, data[idx:]...)
+			result = append(result, pads[:padCount]...)
+		}
+
+		marker := encMarker - byte(padCount)
+		result = append(result, marker)
+	}
+
+	return result
+}
+
+func reallocBytes(b []byte, n int) []byte {
+	newSize := len(b) + n
+	if cap(b) < newSize {
+		bs := make([]byte, len(b), newSize)
+		copy(bs, b)
+		return bs
+	}
+
+	// slice b has capability to store n bytes
+	return b
+}
+
+func TestSetPlacementRule() {
+	db := GetDB()
+
+	MustExec(db, "drop database if exists test99")
+	MustExec(db, "create database test99")
+	MustExec(db, "create table test99.r0(z int)")
+	time.Sleep(2 * time.Second)
+
+	SetPlacementRuleForTable("127.0.0.1:4000", "test99", "r0")
 }
 
 func main() {
-	TestPDRuleMultiSession(5, 1)
+	SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
+
+	//TestSetPlacementRule()
+	//TestPlainSet0()
+	//TestPlainAddTableReplica()
+	//TestPDRuleMultiSession(5, 1)
 	//TestPlain()
 	//TestPlacementRules()
 
