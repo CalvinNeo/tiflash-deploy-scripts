@@ -246,6 +246,10 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 		Ts: make(map[int]*Table),
 		Replica: Replica,
 	}
+	tables2 := Tables{
+		Ts: make(map[int]*Table),
+		Replica: Replica,
+	}
 
 	if WithAlterDB {
 		for j := 0; j < 1000; j++ {
@@ -289,7 +293,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				} else if pick == 7 {
 					tables.FlashbackTable(pd, db)
 				} else if pick == -1 {
-					tables.AlterDatabaseSetReplica(pd, db, Replica, "test97")
+					tables2.AlterDatabaseSetReplica(pd, db, Replica, "test97")
 				}
 			}
 
