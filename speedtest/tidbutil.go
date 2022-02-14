@@ -115,6 +115,7 @@ func (h *PDHelper) GetPDRegionRecordStats(tableID int64, stats *PDRegionStats) e
 	}
 
 	err = json.Unmarshal(buf.Bytes(), stats)
+	fmt.Printf("ffffff %v\n", string(buf.Bytes()))
 	if err != nil {
 		return errors.New("fail parse")
 	}
