@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -52,6 +53,73 @@ type TiFlashRule struct {
 	Constraints    Constraints  `json:"label_constraints,omitempty"`
 	LocationLabels []string     `json:"location_labels,omitempty"`
 	IsolationLevel string       `json:"isolation_level,omitempty"`
+}
+
+func GetStatsHelper(tbID int64) string {
+	startKey := GenTableRecordPrefix(tbID)
+	endKey := EncodeTablePrefix(tbID + 1)
+	startKey = EncodeBytes([]byte{}, startKey)
+	endKey = EncodeBytes([]byte{}, endKey)
+
+	p := fmt.Sprintf("/pd/api/v1/stats/region?start_key=%s&end_key=%s",
+		url.QueryEscape(string(startKey)),
+		url.QueryEscape(string(endKey)))
+	fmt.Printf("===== AAAAA %v\n", p)
+	return p
+}
+
+// PDRegionStats is the json response from PD.
+type PDRegionStats struct {
+	Count            int            `json:"count"`
+	EmptyCount       int            `json:"empty_count"`
+	StorageSize      int64          `json:"storage_size"`
+	StorageKeys      int64          `json:"storage_keys"`
+	StoreLeaderCount map[uint64]int `json:"store_leader_count"`
+	StorePeerCount   map[uint64]int `json:"store_peer_count"`
+}
+
+
+// GetGroupRules to get all placement rule in a certain group.
+func (h *PDHelper) GetPDRegionRecordStats(tableID int64, stats *PDRegionStats) error {
+	startKey := GenTableRecordPrefix(tableID)
+	endKey := EncodeTablePrefix(tableID + 1)
+	startKey = EncodeBytes([]byte{}, startKey)
+	endKey = EncodeBytes([]byte{}, endKey)
+
+	getURL := fmt.Sprintf("%s://%s/pd/api/v1/stats/region?start_key=%s&end_key=%s",
+		h.InternalHTTPSchema,
+		h.PDAddr,
+		url.QueryEscape(string(startKey)),
+		url.QueryEscape(string(endKey)),
+	)
+	fmt.Printf("B %v\n", getURL)
+
+	resp, err := h.InternalHTTPClient.Get(getURL)
+	if err != nil {
+		return errors.New("fail get")
+	}
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("GetGroupRules returns error")
+	}
+
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(resp.Body)
+	if err != nil {
+		return errors.New("fail")
+	}
+
+	err = json.Unmarshal(buf.Bytes(), stats)
+	if err != nil {
+		return errors.New("fail parse")
+	}
+
+	return nil
 }
 
 // GetGroupRules to get all placement rule in a certain group.

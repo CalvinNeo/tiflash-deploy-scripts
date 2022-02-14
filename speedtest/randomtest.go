@@ -252,7 +252,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	}
 
 	if WithAlterDB {
-		for j := 0; j < 1000; j++ {
+		for j := 0; j < 500; j++ {
 			MustExec(dbm, "create table test97.k%v(z int)", j)
 		}
 	}

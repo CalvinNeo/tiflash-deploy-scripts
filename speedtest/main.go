@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"io"
@@ -713,7 +714,14 @@ func TestPlainAlterTableDDL() {
 }
 
 func main() {
-	TestPDRuleMultiSession(5, 2, true, 40)
+	var x PDRegionStats
+	pd := NewPDHelper(os.Args[1])
+	i, _ := strconv.Atoi(os.Args[2])
+	pd.GetPDRegionRecordStats(int64(i), &x)
+	y, _ := json.Marshal(x)
+	fmt.Printf("A %v\n", string(y))
+	//GetStatsHelper(66)
+	// TestPDRuleMultiSession(5, 2, true, 40)
 
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
