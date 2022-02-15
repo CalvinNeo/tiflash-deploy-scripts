@@ -467,10 +467,15 @@ func (h *PDHelper) GetPDRegionKeys(tableID int64) ([]PDRegionKeysItem, error) {
 	end := x.Regions[x.Count - 1]
 
 	for {
+		e, _ := hex.DecodeString(end.EndKey)
+		e1 := EncodeBytes([]byte{}, e)
+		e2 := url.QueryEscape(string(e1))
+		fmt.Printf("e2 %v\n", e2)
+
 		getURLNext := fmt.Sprintf("%s://%s/pd/api/v1/regions/key?key=%s",
 			h.InternalHTTPSchema,
 			pdAddr,
-			end.EndKey,
+			e2,
 		)
 		x, err := tmpHttpGet(getURLNext)
 		if err != nil {
