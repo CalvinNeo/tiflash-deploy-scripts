@@ -713,28 +713,7 @@ func TestPlainAlterTableDDL() {
 }
 
 func main() {
-	//var x PDRegionStats
-	//pd := NewPDHelper(os.Args[1])
-	//i, _ := strconv.Atoi(os.Args[2])
-	//pd.GetPDRegionRecordStats(int64(i), &x)
-	//y, _ := json.Marshal(x)
-	//fmt.Printf("A %v\n", string(y))
-	pd := NewPDHelper(os.Args[1])
-	//x, _ := pd.GetPDRegionKeys()
-	//z, _ := json.Marshal(*x)
-	//fmt.Printf("A %v\n", string(z))
-
-	//GetStatsHelper(66)
-	a, e := pd.GetPDRegionKeys(66)
-	if e != nil {
-		fmt.Printf("E %v\n", e)
-	}
-	for _, x := range a {
-		fmt.Printf("Region %v | %v %v\n", x.ID, x.StartKey, x.EndKey)
-	}
-
 	// TestPDRuleMultiSession(5, 2, true, 40)
-
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
 	//TestPlainAlterTableDDL()
@@ -745,14 +724,10 @@ func main() {
 	//TestPDRuleMultiSession(5, 1)
 	//TestPlain()
 	//TestPlacementRules()
-
 	//PrintPD()
-
 	//TestTruncateTableTombstone(40, 4, 1)
+	TestBigTable(false, 30000, 1)
 	//TestBigTable(false, 30000, 1)
-	//TestBigTable(false, 30000, 1)
-
-	//TODO
 
 	// TestPlain()
 
@@ -762,10 +737,5 @@ func main() {
 	//TestPerformanceAddPartition(50, 10, 2, 2)
 
 	//TestMultiTiFlash()
-
-	//x := uint64(429772939013390339)
-	//y := TimeToOracleUpperBound(GetTimeFromTS(x))
-	//fmt.Printf("%v %v %v\n", x, y, x - y)
-
 	//TestPlainSet0()
 }
