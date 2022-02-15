@@ -9,6 +9,7 @@ import (
 )
 
 type Table struct {
+	ReplicaCount int
 	Dropped bool
 	RuleCount int
 	// Rule count for each table partition, will increase when truncated.
@@ -31,6 +32,22 @@ func RandomWrite(db *sql.DB, table string, n int, start int) {
 	}
 }
 
+func (t *Tables) SetTiFlashReplica(pd *PDHelper, db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if !v.Dropped && !(v.ReplicaCount == 0) {
+			t.Ts[k].ReplicaCount = 1
+			s := fmt.Sprintf("alter table test98.t%v set tiflash replica %v", k, t.Replica)
+			MustExec(db, s)
+			t.PrintGather(pd)
+			return s
+		}
+	}
+	return ""
+}
+
 func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica bool) []string {
 	t.Lock()
 	defer t.Unlock()
@@ -46,9 +63,11 @@ func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica b
 			RuleCount:          1,
 			PartitionRuleCount: &m,
 			PartitionDropped:   &m2,
+			ReplicaCount:		0,
 		}
 		ss := []string{fmt.Sprintf("create table test98.t%v (z int) partition by range (z) (partition p0 values less than (0))", n)}
 		if setReplica {
+			t.Ts[n].ReplicaCount = 1
 			ss = append(ss, fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica))
 		}
 		for _, e := range ss {
@@ -62,9 +81,11 @@ func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica b
 			RuleCount:          1,
 			PartitionRuleCount: nil,
 			PartitionDropped:   nil,
+			ReplicaCount:		0,
 		}
 		ss := []string{fmt.Sprintf("create table test98.t%v (z int)", n)}
 		if setReplica {
+			t.Ts[n].ReplicaCount = 1
 			ss = append(ss, fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica))
 		}
 		for _, e := range ss {
@@ -270,7 +291,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 			tables.AddPartition(pd, db) // 1
 
 			for i := 0; i < C; i ++ {
-				in := []int{0,1,2,3,4,5,6,7}
+				in := []int{0,1,2,3,4,5,6,7,8,9,10}
 				if WithAlterDB {
 					in = []int{-1,-2,0,1,2,3,4,5,6,7}
 				}
@@ -294,6 +315,12 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 					tables.FlashbackTable(pd, db)
 				} else if pick == -1 {
 					tables2.AlterDatabaseSetReplica(pd, db, Replica, "test97")
+				} else if pick == 8 {
+					tables.AddTable(pd, db, false, false)
+				} else if pick == 9 {
+					tables.AddTable(pd, db, false, false)
+				} else if pick == 10 {
+					tables.SetTiFlashReplica(pd, db)
 				}
 			}
 
@@ -302,12 +329,20 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	}
 	wg.Wait()
 
-	if ok := WaitAllTableOK(dbm, "test98", 20, "all"); !ok {
+	noReplica := 0
+	for i, t := range tables.Ts {
+		if !(t.Dropped) && (t.ReplicaCount == 0){
+			fmt.Printf("Table %v has 0 Replica\n", i)
+			noReplica += 1
+		}
+	}
+
+	if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
 		panic("Some table not ready")
 	}
 
 	if WithAlterDB {
-		if ok := WaitAllTableOK(dbm, "test97", 20, "all"); !ok {
+		if ok := WaitAllTableOK(dbm, "test97", 20, "all", noReplica); !ok {
 			panic("Some table not ready in test97")
 		}
 	}

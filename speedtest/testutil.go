@@ -166,7 +166,7 @@ func WaitUntil(db *sql.DB, s string, expected int, to int) bool {
 	}
 }
 
-func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string) bool {
+func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) bool {
 	tick := 0
 	for {
 		select {
@@ -179,11 +179,11 @@ func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string) bool {
 			}
 			tick += 1
 			if x == 0 {
-				fmt.Printf("OK check db %v tag %v retry %v\n", dbn, tag, tick)
+				fmt.Printf("OK check db %v tag %v retry %v noReplica %v count %v\n", dbn, tag, tick, noReplica, x)
 				return true
 			}
 			if tick >= to {
-				fmt.Printf("Fail db %v count %v tag %v retry %v\n", dbn, x, tag, tick)
+				fmt.Printf("Fail db %v count %v tag %v retry %v noReplica %v\n", dbn, x, tag, tick, noReplica)
 				return false
 			}
 		}

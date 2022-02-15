@@ -713,7 +713,7 @@ func TestPlainAlterTableDDL() {
 }
 
 func main() {
-	// TestPDRuleMultiSession(5, 2, true, 40)
+	TestPDRuleMultiSession(5, 1, false, 40)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
 	//TestPlainAlterTableDDL()
@@ -726,7 +726,7 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	TestBigTable(false, 30000, 1)
+	//TestBigTable(false, 30000, 1)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()
