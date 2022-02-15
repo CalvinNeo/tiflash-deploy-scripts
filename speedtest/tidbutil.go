@@ -452,7 +452,10 @@ func (h *PDHelper) GetPDRegionKeys(tableID int64) ([]PDRegionKeysItem, error) {
 		}
 	}
 
-	x, _ := tmpHttpGet(getURLFirst)
+	x, err := tmpHttpGet(getURLFirst)
+	if err != nil {
+		return nil, err
+	}
 	if x.Count <= 0 {
 		return []PDRegionKeysItem{}, nil
 	}
@@ -469,7 +472,10 @@ func (h *PDHelper) GetPDRegionKeys(tableID int64) ([]PDRegionKeysItem, error) {
 			pdAddr,
 			end.EndKey,
 		)
-		x, _ := tmpHttpGet(getURLNext)
+		x, err := tmpHttpGet(getURLNext)
+		if err != nil {
+			fmt.Printf("EEE %v\n", err)
+		}
 		tmpHandle(&x.Regions)
 		if x.Count < 16 {
 			break

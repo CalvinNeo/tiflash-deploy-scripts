@@ -725,7 +725,10 @@ func main() {
 	//fmt.Printf("A %v\n", string(z))
 
 	//GetStatsHelper(66)
-	a, _ := pd.GetPDRegionKeys(66)
+	a, e := pd.GetPDRegionKeys(66)
+	if e != nil {
+		fmt.Printf("E %v\n", e)
+	}
 	for _, x := range a {
 		fmt.Printf("Region %v | %v %v\n", x.ID, x.StartKey, x.EndKey)
 	}
