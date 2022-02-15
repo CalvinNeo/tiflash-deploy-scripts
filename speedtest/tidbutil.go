@@ -461,7 +461,7 @@ func (h *PDHelper) GetPDRegionKeys(tableID int64) ([]PDRegionKeysItem, error) {
 	}
 
 	tmpHandle(&x.Regions)
-	if x.Count <= 16 {
+	if x.Count < 16 {
 		return res, nil
 	}
 	end := x.Regions[x.Count - 1]
@@ -480,7 +480,7 @@ func (h *PDHelper) GetPDRegionKeys(tableID int64) ([]PDRegionKeysItem, error) {
 		if x.Count < 16 {
 			break
 		}
-		fmt.Printf("Z %v\n", getURLNext)
+		fmt.Printf("Next with %v\n", getURLNext)
 		end = x.Regions[x.Count - 1]
 	}
 
