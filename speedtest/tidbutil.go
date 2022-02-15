@@ -58,12 +58,12 @@ type TiFlashRule struct {
 func GetStatsHelper(tbID int64) string {
 	startKey := GenTableRecordPrefix(tbID)
 	endKey := EncodeTablePrefix(tbID + 1)
-	startKey = EncodeBytes([]byte{}, startKey)
-	endKey = EncodeBytes([]byte{}, endKey)
+	startKeyX := hex.EncodeToString(startKey)
+	endKeyX := hex.EncodeToString(endKey)
 
 	p := fmt.Sprintf("/pd/api/v1/stats/region?start_key=%s&end_key=%s",
-		url.QueryEscape(string(startKey)),
-		url.QueryEscape(string(endKey)))
+		startKeyX,
+		endKeyX)
 	fmt.Printf("===== AAAAA %v\n", p)
 	return p
 }
@@ -92,7 +92,6 @@ func (h *PDHelper) GetPDRegionRecordStats(tableID int64, stats *PDRegionStats) e
 		url.QueryEscape(string(startKey)),
 		url.QueryEscape(string(endKey)),
 	)
-	fmt.Printf("B %v\n", getURL)
 
 	resp, err := h.InternalHTTPClient.Get(getURL)
 	if err != nil {
@@ -115,7 +114,6 @@ func (h *PDHelper) GetPDRegionRecordStats(tableID int64, stats *PDRegionStats) e
 	}
 
 	err = json.Unmarshal(buf.Bytes(), stats)
-	fmt.Printf("ffffff %v\n", string(buf.Bytes()))
 	if err != nil {
 		return errors.New("fail parse")
 	}
@@ -387,4 +385,98 @@ func SetPlacementRuleForTable(dblink string, schema string, table string) {
 	buf := bytes.NewBuffer(j)
 
 	fmt.Printf("%v", buf)
+}
+
+type PDRegionKeysItem struct {
+	ID int `json:"id"`
+	StartKey string `json:"start_key"`
+	EndKey string `json:"end_key"`
+}
+
+type PDRegionKeys struct {
+	Count int `json:"count"`
+	Regions []PDRegionKeysItem `json:"regions"`
+}
+
+func (h *PDHelper) tmpHttpGet() {
+}
+
+func (h *PDHelper) GetPDRegionKeys(tableID int64) ([]PDRegionKeysItem, error) {
+	pdAddr := h.PDAddr
+
+	startKey := GenTableRecordPrefix(tableID)
+	endKey := EncodeTablePrefix(tableID + 1)
+	sx := hex.EncodeToString(startKey)
+	ex := hex.EncodeToString(endKey)
+
+	getURLFirst := fmt.Sprintf("%s://%s/pd/api/v1/regions/key",
+		h.InternalHTTPSchema,
+		pdAddr,
+	)
+
+	tmpHttpGet := func (getURL string) (*PDRegionKeys, error) {
+		resp, err := h.InternalHTTPClient.Get(getURL)
+		if err != nil {
+			return nil, errors.New("fail get")
+		}
+		defer func() {
+			if err = resp.Body.Close(); err != nil {
+
+			}
+		}()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, errors.New("GetGroupRules returns error")
+		}
+
+		buf := new(bytes.Buffer)
+		_, err = buf.ReadFrom(resp.Body)
+		if err != nil {
+			return nil, errors.New("fail read")
+		}
+
+		var keys PDRegionKeys
+		err = json.Unmarshal(buf.Bytes(), &keys)
+		if err != nil {
+			return nil, errors.New("fail parse")
+		}
+		return &keys, nil
+	}
+
+	var res []PDRegionKeysItem
+	tmpHandle := func (l *[]PDRegionKeysItem) {
+		for _, x := range *l {
+			if x.StartKey >= sx && x.EndKey <= ex {
+				res = append(res, x)
+			}
+		}
+	}
+
+	x, _ := tmpHttpGet(getURLFirst)
+	if x.Count <= 0 {
+		return []PDRegionKeysItem{}, nil
+	}
+
+	tmpHandle(&x.Regions)
+	if x.Count <= 16 {
+		return res, nil
+	}
+	end := x.Regions[x.Count - 1]
+
+	for {
+		getURLNext := fmt.Sprintf("%s://%s/pd/api/v1/regions/key?key=%s",
+			h.InternalHTTPSchema,
+			pdAddr,
+			end.EndKey,
+		)
+		x, _ := tmpHttpGet(getURLNext)
+		tmpHandle(&x.Regions)
+		if x.Count < 16 {
+			break
+		}
+		fmt.Printf("Z %v\n", getURLNext)
+		end = x.Regions[x.Count - 1]
+	}
+
+	return res, nil
 }
