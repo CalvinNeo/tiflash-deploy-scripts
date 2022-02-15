@@ -48,6 +48,23 @@ func (t *Tables) SetTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 	return ""
 }
 
+
+func (t *Tables) RemoveTiFlashReplica(pd *PDHelper, db *sql.DB) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for k, v := range t.Ts {
+		if !v.Dropped && !(v.ReplicaCount == 0) {
+			t.Ts[k].ReplicaCount = 0
+			s := fmt.Sprintf("alter table test98.t%v set tiflash replica 0", k)
+			MustExec(db, s)
+			t.PrintGather(pd)
+			return s
+		}
+	}
+	return ""
+}
+
 func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica bool) []string {
 	t.Lock()
 	defer t.Unlock()
@@ -250,6 +267,8 @@ func (t *Tables) PrintGather(pd *PDHelper){
 
 
 func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
+	// Need configure-store-limit
+	// https://docs.pingcap.com/zh/tidb/stable/configure-store-limit/
 	dbm := GetSession()
 	MustExec(dbm, "drop database if exists test98")
 	MustExec(dbm, "create database test98")
@@ -291,7 +310,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 			tables.AddPartition(pd, db) // 1
 
 			for i := 0; i < C; i ++ {
-				in := []int{0,1,2,3,4,5,6,7,8,9,10}
+				in := []int{0,1,2,3,4,5,6,7,8,9,10,11}
 				if WithAlterDB {
 					in = []int{-1,-2,0,1,2,3,4,5,6,7}
 				}
@@ -321,6 +340,8 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 					tables.AddTable(pd, db, false, false)
 				} else if pick == 10 {
 					tables.SetTiFlashReplica(pd, db)
+				} else if pick == 11 {
+					tables.RemoveTiFlashReplica(pd, db)
 				}
 			}
 
