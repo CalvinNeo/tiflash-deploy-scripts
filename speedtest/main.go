@@ -563,13 +563,17 @@ func TestBigTable(reuse bool, total int, Replica int){
 		MustExec(db, "drop database test99")
 		MustExec(db, "create database test99")
 
-		MustExec(db, "create table test99.bigtable(z int, t text)")
+		MustExec(db, "create table test99.bigtable(z int, t1 text, t2 text, t3 text, t4 text, t5 text, t6 text, t7 text, t8 text)")
 
 		X := strings.Repeat("ABCDEFG", 2000)
 
 		for i := 0; i < total; i++ {
 			fmt.Printf("Insert %v\n", i)
-			MustExec(db, fmt.Sprintf("insert into test99.bigtable values (%v,'%v')", i, X))
+			s := fmt.Sprintf("insert into test99.bigtable values (%v,'%v','%v','%v','%v','%v','%v','%v','%v')", i, X,X,X,X,X,X,X,X)
+			_, err := db.Exec(s)
+			if err != nil {
+				panic(err)
+			}
 		}
 		WaitUntil(db, "select count(*) from test99.bigtable", total, 100)
 
@@ -713,7 +717,7 @@ func TestPlainAlterTableDDL() {
 }
 
 func main() {
-	TestPDRuleMultiSession(5, 1, false, 400)
+	//TestPDRuleMultiSession(5, 1, false, 400)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
 	//TestPlainAlterTableDDL()
@@ -726,7 +730,7 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	//TestBigTable(false, 30000, 1)
+	TestBigTable(false, 100, 1)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()
