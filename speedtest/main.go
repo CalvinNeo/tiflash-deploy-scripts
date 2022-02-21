@@ -543,9 +543,9 @@ func TestManyTable(reuse bool, total int, totalPart int, PartCount int, Replica 
 
 func main() {
 	flag.Parse()
-	TestManyTable(false, 5, 5, 2, 1)
+	//TestManyTable(false, 5, 5, 2, 1)
 
-	//TestPDRuleMultiSession(5, 1, false, 400)
+	TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
 	//TestPlainAlterTableDDL()

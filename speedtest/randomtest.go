@@ -77,13 +77,14 @@ func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica b
 		m2[0] = false
 		t.Ts[n] = &Table{
 			Dropped:            false,
-			RuleCount:          1,
+			RuleCount:          0,
 			PartitionRuleCount: &m,
 			PartitionDropped:   &m2,
 			ReplicaCount:		0,
 		}
 		ss := []string{fmt.Sprintf("create table test98.t%v (z int) partition by range (z) (partition p0 values less than (0))", n)}
 		if setReplica {
+			t.Ts[n].RuleCount = 1
 			t.Ts[n].ReplicaCount = 1
 			ss = append(ss, fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica))
 		}
@@ -95,13 +96,14 @@ func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica b
 	} else {
 		t.Ts[n] = &Table{
 			Dropped:            false,
-			RuleCount:          1,
+			RuleCount:          0,
 			PartitionRuleCount: nil,
 			PartitionDropped:   nil,
 			ReplicaCount:		0,
 		}
 		ss := []string{fmt.Sprintf("create table test98.t%v (z int)", n)}
 		if setReplica {
+			t.Ts[n].ReplicaCount = 1
 			t.Ts[n].ReplicaCount = 1
 			ss = append(ss, fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica))
 		}
@@ -310,7 +312,8 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 			tables.AddPartition(pd, db) // 1
 
 			for i := 0; i < C; i ++ {
-				in := []int{0,1,2,3,4,5,6,7,8,9,10,11}
+				//in := []int{0,1,2,3,4,5,6,7,8,9,10,11}
+				in := []int{0,1,2,3,4,5,6,7,8,9}
 				if WithAlterDB {
 					in = []int{-1,-2,0,1,2,3,4,5,6,7}
 				}
