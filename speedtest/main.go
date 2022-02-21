@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	"flag"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"io"
@@ -302,27 +302,6 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.D
 }
 
 
-func ChangeGCSafeState(db *sql.DB, last time.Time, interval string) {
-	gcTimeFormat := "20060102-15:04:05 -0700 MST"
-	lastSafePoint := last.Format(gcTimeFormat)
-
-	s := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_last_run_time', '%[1]s', '')
-			       ON DUPLICATE KEY
-			       UPDATE variable_value = '%[1]s'`
-
-	s = fmt.Sprintf(s, lastSafePoint)
-	fmt.Printf("lastRun %v\n", s)
-	MustExec(db, s)
-
-	s = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_run_interval', '%[1]s', '')
-			       ON DUPLICATE KEY
-			       UPDATE variable_value = '%[1]s'`
-
-	s = fmt.Sprintf(s, interval)
-	fmt.Printf("Interval %v\n", s)
-	MustExec(db, s)
-}
-
 func TestTruncateTableTombstone(C int, T int, Replica int) {
 	fmt.Println("START TestTruncateTableTombstone")
 	db := GetDB()
@@ -376,168 +355,6 @@ func TestOncall3793(C int, N int, T int, Replica int) {
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
 	ChangeGCSafePoint(db, now, "false", "10m0s")
-}
-
-func TestPlainAddTableReplica() {
-	fmt.Println("START TestPlainAddTruncateTable")
-	db := GetDB()
-
-	MustExec(db, "drop database if exists test99")
-	MustExec(db, "create database test99")
-
-	MustExec(db, "create table test99.addreplica(z int)")
-	MustExec(db, "alter table test99.addreplica set tiflash replica 1")
-	maxTick := 0
-	if ok, tick := WaitTableOK(db, "addreplica", 40, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-
-	MustExec(db, "alter table test99.addreplica set tiflash replica 2")
-	var x int
-	s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = '%v'", "addreplica")
-	row := db.QueryRow(s)
-	if err := row.Scan(&x); err != nil {
-		panic(err)
-	}
-}
-
-func TestPlainAddTruncateTable() {
-	fmt.Println("START TestPlainAddTruncateTable")
-	db := GetDB()
-
-	MustExec(db, "drop database test99")
-	MustExec(db, "create database test99")
-
-	MustExec(db, "create table test99.addtruncatetable(z int)")
-	MustExec(db, "alter table test99.addtruncatetable set tiflash replica 2")
-	maxTick := 0
-	if ok, tick := WaitTableOK(db, "addtruncatetable", 40, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-}
-
-func TestPlainAddDropTable() {
-	fmt.Println("START TestPlainAddDropTable")
-	db := GetDB()
-
-	MustExec(db, "drop database test99")
-	MustExec(db, "create database test99")
-
-	MustExec(db, "create table test99.adddroptable(z int)")
-	MustExec(db, "alter table test99.adddroptable set tiflash replica 2")
-	maxTick := 0
-	if ok, tick := WaitTableOK(db, "adddroptable", 10, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-	RandomWrite(db, "adddroptable", 100, 1)
-	MustExec(db, "drop table test99.adddroptable")
-	MustExec(db, "flashback table test99.adddroptable")
-	if ok, tick := WaitTableOK(db, "adddroptable", 30, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-}
-
-
-func TestPlainAddPartition() {
-	fmt.Println("START TestPlainAddPartition")
-	db := GetDB()
-
-	MustExec(db, "drop database test99")
-	MustExec(db, "create database test99")
-
-	MustExec(db, "create table test99.addpartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10))")
-	MustExec(db, "alter table test99.addpartition set tiflash replica 2")
-	maxTick := 0
-	MustExec(db, "alter table test99.addpartition ADD PARTITION (PARTITION pn40 VALUES LESS THAN (40))")
-	if ok, tick := WaitTableOK(db, "addpartition", 10, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-}
-
-func TestPlainTruncatePartition() {
-	fmt.Println("START TestPlainTruncatePartition")
-	db := GetDB()
-
-	MustExec(db, "drop database test99")
-	MustExec(db, "create database test99")
-
-	MustExec(db, "create table test99.truncatepartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10))")
-	MustExec(db, "alter table test99.truncatepartition set tiflash replica 2")
-	maxTick := 0
-
-	MustExec(db, "insert into test99.truncatepartition VALUES(9)")
-	MustExec(db, "alter table test99.truncatepartition truncate PARTITION p0")
-	if ok, tick := WaitTableOK(db, "truncatepartition", 10, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-
-
-}
-
-func TestPlainDropPartition() {
-	fmt.Println("START TestPlainDropPartition")
-	db := GetDB()
-
-	MustExec(db, "drop database test99")
-	MustExec(db, "create database test99")
-
-	MustExec(db, "create table test99.droppartition(z int) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (10),PARTITION p1 VALUES LESS THAN (20), PARTITION p2 VALUES LESS THAN (30))")
-	MustExec(db, "alter table test99.droppartition set tiflash replica 2")
-	maxTick := 0
-	MustExec(db, "alter table test99.droppartition drop partition p0")
-	if ok, tick := WaitTableOK(db, "droppartition", 10, ""); ok {
-		if tick > maxTick {
-			maxTick = tick
-		}
-	}
-}
-
-func TestPlainSet0() {
-	db := GetDB()
-
-	MustExec(db, "drop database if exists test99")
-	MustExec(db, "create database test99")
-	MustExec(db, "create table test99.r0(z int)")
-	MustExec(db, "alter table test99.r0 set tiflash replica 2")
-	MustExec(db, "alter table test99.r0 set tiflash replica 0")
-
-	time.Sleep(2 * time.Second)
-
-	var x int
-	s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where table_schema = 'test99' and TABLE_NAME = '%v';", "r0")
-	row := db.QueryRow(s)
-	if err := row.Scan(&x); err != nil {
-		panic(err)
-	}
-
-	if x != 0 {
-		panic("Fail TestPlainSet0")
-	}
-}
-
-func TestPlain() {
-	db := GetDB()
-	defer db.Close()
-	ChangeGCSafePoint(db, time.Now(), "true", "10m0s")
-	ChangeGCSafeState(db, time.Now(), "10m")
-	TestPlainSet0()
-	TestPlainDropPartition()
-	TestPlainAddPartition()
-	TestPlainTruncatePartition()
-	TestPlainAddTruncateTable()
-	TestPlainAddDropTable()
 }
 
 
@@ -598,10 +415,8 @@ func TestBigTable(reuse bool, total int, Replica int){
 	}
 }
 
-
-
 func TestPlacementRules() {
-	pd := NewPDHelper("127.0.0.1:2379")
+	pd := NewPDHelper(*PDAddr)
 	rules, err := pd.GetGroupRules("tiflash")
 
 	if err != nil {
@@ -690,7 +505,6 @@ func Routine() {
 
 }
 
-
 func TestSetPlacementRule() {
 	db := GetDB()
 
@@ -702,21 +516,35 @@ func TestSetPlacementRule() {
 	SetPlacementRuleForTable("127.0.0.1:4000", "test99", "r0")
 }
 
-func TestPlainAlterTableDDL() {
-	db := GetDB()
-	MustExec(db, "drop database if exists test99")
-	MustExec(db, "create database test99")
-	for i := 0; i < 500; i++ {
-		MustExec(db, "create table test99.r%v(z int)", i)
+
+func TestManyTable(reuse bool, total int, totalPart int, PartCount int, Replica int){
+	fmt.Println("START TestManyTable")
+	db := GetSession()
+	MustExec(db, "drop database if exists testmany")
+	MustExec(db, "create database testmany")
+
+	for i := 0; i < total; i++ {
+		MustExec(db, "create table testmany.t%v(z int, t text)", i)
 	}
-	start := time.Now()
-	for i := 0; i < 500; i++ {
-		MustExec(db, "alter table test99.r%v set tiflash replica 1", i)
+	for i := 0; i < totalPart; i++ {
+		MustExec(db, "create table testmany.pt%v(z int, t text) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (0))", i)
 	}
-	fmt.Printf( "AAA %v", time.Since(start))
+	for i := 0; i < totalPart; i++ {
+		for j := 0; j < PartCount; j ++ {
+			lessThan := j * 10 + 10
+			MustExec(db, "alter table testmany.pt%v ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", i, lessThan, lessThan)
+		}
+	}
+
+	MustExec(db, "alter database testmany set tiflash replica %v", Replica)
+	WaitAllTableOK(db, "testmany", 100, "testmany", 0)
 }
 
+
 func main() {
+	flag.Parse()
+	TestManyTable(false, 5, 5, 2, 1)
+
 	//TestPDRuleMultiSession(5, 1, false, 400)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
@@ -730,7 +558,7 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	TestBigTable(false, 100, 1)
+	//TestBigTable(false, 100, 1)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()

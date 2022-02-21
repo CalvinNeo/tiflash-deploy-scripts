@@ -278,7 +278,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	defer dbm.Close()
 	time.Sleep(2 * time.Second)
 
-	pd := NewPDHelper("127.0.0.1:2379")
+	pd := NewPDHelper(*PDAddr)
 	pd.ClearAllRules("tiflash")
 
 	origin := pd.GetGroupRulesCount("tiflash")

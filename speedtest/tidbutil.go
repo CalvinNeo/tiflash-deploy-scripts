@@ -207,7 +207,7 @@ func (h *PDHelper) GetGroupRulesCount(group string) int  {
 }
 
 func PrintPD() {
-	pd := NewPDHelper("127.0.0.1:2379")
+	pd := NewPDHelper(*PDAddr)
 	rules, err := pd.GetGroupRules("tiflash")
 
 	if err != nil {

@@ -3,14 +3,20 @@ package main
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 )
 
+var DBAddr = flag.String("a", "127.0.0.1:4000", "addr of tidb")
+var PDAddr = flag.String("p", "127.0.0.1:2379", "addr of pd")
+
 func GetSession() *sql.DB {
-	db, err := sql.Open("mysql", "root@tcp(127.0.0.1:4000)/")
+	addr := fmt.Sprintf("root@tcp(%v)/", *DBAddr)
+	fmt.Printf("Addr %v\n", addr)
+	db, err := sql.Open("mysql", addr)
 	if err != nil {
 		panic(err)
 	}
@@ -18,7 +24,7 @@ func GetSession() *sql.DB {
 }
 
 func GetDB() *sql.DB {
-	db, err := sql.Open("mysql", "root@tcp(127.0.0.1:4000)/")
+	db, err := sql.Open("mysql", fmt.Sprintf("root@tcp(%v)/", *DBAddr))
 	if err != nil {
 		panic(err)
 	}
@@ -183,7 +189,7 @@ func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) b
 				return true
 			}
 			if tick >= to {
-				fmt.Printf("Fail db %v count %v tag %v retry %v noReplica %v\n", dbn, x, tag, tick, noReplica)
+				fmt.Printf("Fail db %v remain %v tag %v retry %v noReplica %v\n", dbn, x, tag, tick, noReplica)
 				return false
 			}
 		}
@@ -249,3 +255,26 @@ func checkFileIsExist(filename string) bool {
 	}
 	return true
 }
+
+
+func ChangeGCSafeState(db *sql.DB, last time.Time, interval string) {
+	gcTimeFormat := "20060102-15:04:05 -0700 MST"
+	lastSafePoint := last.Format(gcTimeFormat)
+
+	s := `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_last_run_time', '%[1]s', '')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '%[1]s'`
+
+	s = fmt.Sprintf(s, lastSafePoint)
+	fmt.Printf("lastRun %v\n", s)
+	MustExec(db, s)
+
+	s = `INSERT HIGH_PRIORITY INTO mysql.tidb VALUES ('tikv_gc_run_interval', '%[1]s', '')
+			       ON DUPLICATE KEY
+			       UPDATE variable_value = '%[1]s'`
+
+	s = fmt.Sprintf(s, interval)
+	fmt.Printf("Interval %v\n", s)
+	MustExec(db, s)
+}
+
