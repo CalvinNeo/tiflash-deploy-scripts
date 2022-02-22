@@ -520,22 +520,24 @@ func TestSetPlacementRule() {
 func TestManyTable(reuse bool, total int, totalPart int, PartCount int, Replica int){
 	fmt.Println("START TestManyTable")
 	db := GetSession()
-	MustExec(db, "drop database if exists testmany")
-	MustExec(db, "create database testmany")
 
-	for i := 0; i < total; i++ {
-		MustExec(db, "create table testmany.t%v(z int, t text)", i)
-	}
-	for i := 0; i < totalPart; i++ {
-		MustExec(db, "create table testmany.pt%v(z int, t text) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (0))", i)
-	}
-	for i := 0; i < totalPart; i++ {
-		for j := 0; j < PartCount; j ++ {
-			lessThan := j * 10 + 10
-			MustExec(db, "alter table testmany.pt%v ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", i, lessThan, lessThan)
+	if !reuse {
+		MustExec(db, "drop database if exists testmany")
+		MustExec(db, "create database testmany")
+
+		for i := 0; i < total; i++ {
+			MustExec(db, "create table testmany.t%v(z int, t text)", i)
+		}
+		for i := 0; i < totalPart; i++ {
+			MustExec(db, "create table testmany.pt%v(z int, t text) PARTITION BY RANGE(z) (PARTITION p0 VALUES LESS THAN (0))", i)
+		}
+		for i := 0; i < totalPart; i++ {
+			for j := 0; j < PartCount; j ++ {
+				lessThan := j * 10 + 10
+				MustExec(db, "alter table testmany.pt%v ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", i, lessThan, lessThan)
+			}
 		}
 	}
-
 	MustExec(db, "alter database testmany set tiflash replica %v", Replica)
 	WaitAllTableOK(db, "testmany", 100, "testmany", 0)
 }
