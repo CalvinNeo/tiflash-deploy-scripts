@@ -12,6 +12,7 @@ import (
 
 var DBAddr = flag.String("a", "127.0.0.1:4000", "addr of tidb")
 var PDAddr = flag.String("p", "127.0.0.1:2379", "addr of pd")
+var ReuseDB = flag.Bool("r", false, "reuse")
 
 func GetSession() *sql.DB {
 	addr := fmt.Sprintf("root@tcp(%v)/", *DBAddr)
@@ -172,18 +173,18 @@ func WaitUntil(db *sql.DB, s string, expected int, to int) bool {
 	}
 }
 
-func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) bool {
+func WaitAllTableOKEx(db *sql.DB, dbn string, to int, tag string, noReplica int, gap int) bool {
 	tick := 0
 	for {
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(time.Duration(gap) * time.Second):
 			var x int
 			s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 0 and table_schema = '%v';", dbn)
 			row := db.QueryRow(s)
 			if err := row.Scan(&x); err != nil {
 				panic(err)
 			}
-			tick += 1
+			tick += gap
 			if x == 0 {
 				fmt.Printf("OK check db %v tag %v retry %v noReplica %v count %v\n", dbn, tag, tick, noReplica, x)
 				return true
@@ -194,6 +195,10 @@ func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) b
 			}
 		}
 	}
+}
+
+func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) bool {
+	return WaitAllTableOKEx(db, dbn, to,tag, noReplica, 1)
 }
 
 func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {

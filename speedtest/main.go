@@ -517,11 +517,11 @@ func TestSetPlacementRule() {
 }
 
 
-func TestManyTable(reuse bool, total int, totalPart int, PartCount int, Replica int){
+func TestManyTable(total int, totalPart int, PartCount int, Replica int){
 	fmt.Println("START TestManyTable")
 	db := GetSession()
 
-	if !reuse {
+	if !*ReuseDB {
 		MustExec(db, "drop database if exists testmany")
 		MustExec(db, "create database testmany")
 
@@ -538,16 +538,19 @@ func TestManyTable(reuse bool, total int, totalPart int, PartCount int, Replica 
 			}
 		}
 	}
+	start := time.Now()
+	fmt.Printf("start %v\n", start)
 	MustExec(db, "alter database testmany set tiflash replica %v", Replica)
-	WaitAllTableOK(db, "testmany", 100, "testmany", 0)
+	fmt.Printf("since all finish ddl1 %v\n", time.Since(start))
+	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20)
 }
 
 
 func main() {
 	flag.Parse()
 	//TestManyTable(false, 5, 5, 2, 1)
-
-	TestPDRuleMultiSession(5, 1, false, 100)
+	TestManyTable(5000, 50, 100, 1)
+	// TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
 	//TestPlainAlterTableDDL()
