@@ -541,8 +541,9 @@ func TestManyTable(total int, totalPart int, PartCount int){
 	start := time.Now()
 	fmt.Printf("start %v\n", start)
 	MustExec(db, "alter database testmany set tiflash replica %v", *ReplicaNum)
-	fmt.Printf("since all finish ddl1 %v\n", time.Since(start))
+	fmt.Printf("since all finish ddl1 %v at %v\n", time.Since(start), time.Now())
 	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20, 200)
+	fmt.Printf("quit cost %v at %v\n", time.Since(start), time.Now())
 }
 
 func main() {
