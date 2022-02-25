@@ -13,6 +13,7 @@ import (
 var DBAddr = flag.String("a", "127.0.0.1:4000", "addr of tidb")
 var PDAddr = flag.String("p", "127.0.0.1:2379", "addr of pd")
 var ReuseDB = flag.Bool("r", false, "reuse")
+var ReplicaNum = flag.Int("replica", 1, "replica")
 
 func GetSession() *sql.DB {
 	addr := fmt.Sprintf("root@tcp(%v)/", *DBAddr)

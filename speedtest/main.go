@@ -83,8 +83,8 @@ func TestOncall3996(N int, Replica int) bool {
 
 
 
-func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
-	fmt.Println("START TestPerformanceAddPartition C %v T %v P %v R %v", C, T, P, Replica)
+func TestPerformanceAddPartition(C int, T int, P int) {
+	fmt.Println("START TestPerformanceAddPartition C %v T %v P %v R %v", C, T, P, *ReplicaNum)
 	runtime.GOMAXPROCS(T)
 	ctx := context.Background()
 	db := GetDB()
@@ -100,7 +100,7 @@ func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
 	fAlter := func(ch *chan []string) {
 		for i := 0; i < C; i++ {
 			*ch <- []string{
-				fmt.Sprintf("alter table test99.t%v set tiflash replica %v", i, Replica)}
+				fmt.Sprintf("alter table test99.t%v set tiflash replica %v", i, *ReplicaNum)}
 		}
 	}
 	AsyncStmt(ctx, "alter", 10, db, fAlter)
@@ -161,8 +161,8 @@ func TestPerformanceAddPartition(C int, T int, P int, Replica int) {
 	Summary(&collect, &collect2, elapsed)
 }
 
-func TestSchemaPerformance(C int, T int, Offset int, Replica int) string {
-	fmt.Println("START TestSchemaPerformance total count %v threads %v start from %v replica %v", C, T, Offset, Replica)
+func TestSchemaPerformance(C int, T int, Offset int) string {
+	fmt.Println("START TestSchemaPerformance total count %v threads %v start from %v replica %v", C, T, Offset)
 	runtime.GOMAXPROCS(T)
 	ctx := context.Background()
 	db := GetDB()
@@ -176,7 +176,7 @@ func TestSchemaPerformance(C int, T int, Offset int, Replica int) string {
 	AsyncStmt(ctx, "create", 10, db, fCreate)
 
 	startAlter := time.Now()
-	MustExec(db, "alter database test99 set tiflash replica %v", Replica)
+	MustExec(db, "alter database test99 set tiflash replica %v", *ReplicaNum)
 	costStartAlter := time.Since(startAlter)
 	fmt.Printf("alter database cost %v\n", costStartAlter.Seconds())
 
@@ -214,7 +214,7 @@ func TestSchemaPerformance(C int, T int, Offset int, Replica int) string {
 	}
 	elapsed := AsyncStmtEx(ctx, "replica", T, db, fCommander, fRunner)
 
-	return fmt.Sprintf("TestSchemaPerformance C %v T %v O %v R %v\n%v\nAlter Database%v", C, T, Offset, Replica, Summary(&collect2, &collect2, elapsed), costStartAlter.Seconds())
+	return fmt.Sprintf("TestSchemaPerformance C %v T %v O %v R %v\n%v\nAlter Database%v", C, T, Offset, *ReplicaNum, Summary(&collect2, &collect2, elapsed), costStartAlter.Seconds())
 
 }
 
@@ -302,7 +302,7 @@ func Summary(collect *[]time.Duration, collect2 *[]time.Duration, elapsed time.D
 }
 
 
-func TestTruncateTableTombstone(C int, T int, Replica int) {
+func TestTruncateTableTombstone(C int, T int) {
 	fmt.Println("START TestTruncateTableTombstone")
 	db := GetDB()
 	defer db.Close()
@@ -310,7 +310,7 @@ func TestTruncateTableTombstone(C int, T int, Replica int) {
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	TestPerformance(C, T, 0, Replica)
+	TestPerformance(C, T, 0, *ReplicaNum)
 
 	now := time.Now()
 	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour), "false", "1000m")
@@ -322,7 +322,7 @@ func TestTruncateTableTombstone(C int, T int, Replica int) {
 	}
 }
 
-func TestOncall3793(C int, N int, T int, Replica int) {
+func TestOncall3793(C int, N int, T int) {
 	fmt.Println("START TestOncall3793")
 	db := GetDB()
 	defer db.Close()
@@ -330,7 +330,7 @@ func TestOncall3793(C int, N int, T int, Replica int) {
 	MustExec(db, "drop database test99")
 	MustExec(db, "create database test99")
 
-	TestPerformance(C, T, 0, Replica)
+	TestPerformance(C, T, 0, *ReplicaNum)
 
 	now := time.Now()
 	ChangeGCSafePoint(db, now.Add(0 - 24 * time.Hour), "true", "1000m")
@@ -351,7 +351,7 @@ func TestOncall3793(C int, N int, T int, Replica int) {
 	}
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
-	TestPerformance(N, T, C,1 )
+	TestPerformance(N, T, C,*ReplicaNum )
 	fmt.Printf("gc_delete_range count %v, gc_delete_range_done count %v\n", gc_delete_range, gc_delete_range_done)
 
 	ChangeGCSafePoint(db, now, "false", "10m0s")
@@ -500,7 +500,7 @@ func Routine() {
 				io.WriteString(f, fmt.Sprintf("TestOncall3996 %v FAIL\n", N, Replica))
 			}
 		}
-		TestOncall3793(200, 100, 10, 1)
+		TestOncall3793(200, 100, 10)
 	}
 
 }
@@ -517,7 +517,7 @@ func TestSetPlacementRule() {
 }
 
 
-func TestManyTable(total int, totalPart int, PartCount int, Replica int){
+func TestManyTable(total int, totalPart int, PartCount int){
 	fmt.Println("START TestManyTable")
 	db := GetSession()
 
@@ -540,7 +540,7 @@ func TestManyTable(total int, totalPart int, PartCount int, Replica int){
 	}
 	start := time.Now()
 	fmt.Printf("start %v\n", start)
-	MustExec(db, "alter database testmany set tiflash replica %v", Replica)
+	MustExec(db, "alter database testmany set tiflash replica %v", *ReplicaNum)
 	fmt.Printf("since all finish ddl1 %v\n", time.Since(start))
 	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20)
 }
@@ -549,7 +549,7 @@ func TestManyTable(total int, totalPart int, PartCount int, Replica int){
 func main() {
 	flag.Parse()
 	//TestManyTable(false, 5, 5, 2, 1)
-	TestManyTable(5000, 50, 100, 1)
+	TestManyTable(5000, 50, 100)
 	// TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
