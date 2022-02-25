@@ -13,7 +13,7 @@ import (
 var DBAddr = flag.String("a", "127.0.0.1:4000", "addr of tidb")
 var PDAddr = flag.String("p", "127.0.0.1:2379", "addr of pd")
 var ReuseDB = flag.Bool("r", false, "reuse")
-var ReplicaNum = flag.Int("replica", 1, "replica")
+var ReplicaNum = flag.Int("num", 1, "replica")
 
 func GetSession() *sql.DB {
 	addr := fmt.Sprintf("root@tcp(%v)/", *DBAddr)
@@ -174,7 +174,7 @@ func WaitUntil(db *sql.DB, s string, expected int, to int) bool {
 	}
 }
 
-func WaitAllTableOKEx(db *sql.DB, dbn string, to int, tag string, noReplica int, gap int) bool {
+func WaitAllTableOKEx(db *sql.DB, dbn string, to int, tag string, noReplica int, gap int, repeat int) bool {
 	tick := 0
 	for {
 		select {
@@ -187,19 +187,22 @@ func WaitAllTableOKEx(db *sql.DB, dbn string, to int, tag string, noReplica int,
 			}
 			tick += gap
 			if x == 0 {
-				fmt.Printf("OK check db %v tag %v retry %v noReplica %v count %v\n", dbn, tag, tick, noReplica, x)
+				fmt.Printf("OK check db %v tag %v cost sec %v noReplica count %v\n", dbn, tag, tick, noReplica)
 				return true
 			}
 			if tick >= to {
-				fmt.Printf("Fail db %v remain %v tag %v retry %v noReplica %v\n", dbn, x, tag, tick, noReplica)
+				fmt.Printf("Fail db %v remain %v tag %v cost sec %v noReplica count %v\n", dbn, x, tag, tick, noReplica)
 				return false
+			}
+			if repeat != 0 && tick % repeat == 0 {
+				fmt.Printf("Pending db %v remain %v tag %v cost sec %v noReplica count %v\n", dbn, x, tag, tick, noReplica)
 			}
 		}
 	}
 }
 
 func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) bool {
-	return WaitAllTableOKEx(db, dbn, to,tag, noReplica, 1)
+	return WaitAllTableOKEx(db, dbn, to,tag, noReplica, 1, 0)
 }
 
 func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {

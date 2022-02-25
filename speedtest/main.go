@@ -518,7 +518,7 @@ func TestSetPlacementRule() {
 
 
 func TestManyTable(total int, totalPart int, PartCount int){
-	fmt.Println("START TestManyTable")
+	fmt.Printf("START TestManyTable %v\n", *ReplicaNum)
 	db := GetSession()
 
 	if !*ReuseDB {
@@ -542,14 +542,14 @@ func TestManyTable(total int, totalPart int, PartCount int){
 	fmt.Printf("start %v\n", start)
 	MustExec(db, "alter database testmany set tiflash replica %v", *ReplicaNum)
 	fmt.Printf("since all finish ddl1 %v\n", time.Since(start))
-	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20)
+	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20, 200)
 }
-
 
 func main() {
 	flag.Parse()
-	//TestManyTable(false, 5, 5, 2, 1)
+
 	TestManyTable(5000, 50, 100)
+	//TestManyTable(5000, 50, 100)
 	// TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
 	//SetPlacementRuleForTable(os.Args[1], os.Args[2], os.Args[3])
