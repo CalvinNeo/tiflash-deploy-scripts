@@ -546,6 +546,26 @@ func TestManyTable(total int, totalPart int, PartCount int){
 	fmt.Printf("quit cost %v at %v\n", time.Since(start), time.Now())
 }
 
+func MakeSnapshotMetric() {
+	db := GetSession()
+	MustExec(db, "drop database if exists testmetric")
+	MustExec(db, "create database testmetric")
+	for i := 0; i < 100; i++ {
+		MustExec(db, "create table testmetric.t%v(z int, t text)", i)
+	}
+	MustExec(db, "alter database testmetric set tiflash replica %v", 1)
+	WaitAllTableOK(db, "testmetric", 10, "testmetric", 0)
+	MustExec(db, "drop database testmetric")
+
+	MustExec(db, "drop database if exists testmetric2")
+	MustExec(db, "create database testmetric2")
+	for i := 0; i < 2; i++ {
+		MustExec(db, "create table testmetric2.t%v(z int, t text)", i)
+	}
+	WaitAllTableOK(db, "testmetric2", 10, "testmetric2", 0)
+}
+
+
 func main() {
 	flag.Parse()
 
