@@ -405,6 +405,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				} else if pick == 11 {
 					tables.RemoveTiFlashReplica(pd, db)
 				} else if pick == -99 {
+					noReplica := tables.NoReplicaTableCount()
 					if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
 						panic("Some table not ready")
 					}
@@ -416,7 +417,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	}
 	wg.Wait()
 
-	noReplica := tables.NoReplicaTableCount
+	noReplica := tables.NoReplicaTableCount()
 	if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
 		panic("Some table not ready")
 	}
