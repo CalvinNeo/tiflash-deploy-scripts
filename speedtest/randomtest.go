@@ -216,14 +216,66 @@ func (t *Tables) DropTable(pd *PDHelper, db *sql.DB) string {
 	return ""
 }
 
-func (t *Tables) AlterDatabaseSetReplica(pd *PDHelper, db *sql.DB, Replica int, DBName string) string {
+func (t *Tables) AlterDatabaseSetReplica(pd *PDHelper, db *sql.DB, DBName string) string {
 	t.Lock()
 	defer t.Unlock()
 
-	s := fmt.Sprintf("alter database %v set tiflash replica %v", DBName, Replica)
+	for _, v := range t.Ts {
+		if !v.Dropped {
+			if v.PartitionRuleCount != nil {
+				for pk, _ := range *(v.PartitionRuleCount) {
+					if !(*(v.PartitionDropped))[pk] {
+						(*(v.PartitionRuleCount))[pk] = *ReplicaNum
+					}
+				}
+			} else {
+				v.RuleCount = 1
+				v.ReplicaCount = *ReplicaNum
+			}
+		}
+		if v.PartitionRuleCount != nil && !v.Dropped {
+			n := len(*(v.PartitionRuleCount))
+			(*(v.PartitionRuleCount))[n] = 1
+			(*(v.PartitionDropped))[n] = false
+		}
+	}
+
+	s := fmt.Sprintf("alter database %v set tiflash replica %v", DBName, *ReplicaNum)
 	MustExec(db, s)
+	t.PrintGather(pd)
 	return ""
 }
+
+func (t *Tables) RemoveDatabaseSetReplica(pd *PDHelper, db *sql.DB, DBName string) string {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, v := range t.Ts {
+		if !v.Dropped {
+			if v.PartitionRuleCount != nil {
+				for pk, _ := range *(v.PartitionRuleCount) {
+					if !(*(v.PartitionDropped))[pk] {
+						(*(v.PartitionRuleCount))[pk] = 0
+					}
+				}
+			} else {
+				v.RuleCount = 1
+				v.ReplicaCount = 0
+			}
+		}
+		if v.PartitionRuleCount != nil && !v.Dropped {
+			n := len(*(v.PartitionRuleCount))
+			(*(v.PartitionRuleCount))[n] = 1
+			(*(v.PartitionDropped))[n] = false
+		}
+	}
+
+	s := fmt.Sprintf("alter database %v set tiflash replica %v", DBName, 0)
+	MustExec(db, s)
+	t.PrintGather(pd)
+	return ""
+}
+
 
 func (t *Tables) FlashbackTable(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
@@ -267,6 +319,17 @@ func (t *Tables) PrintGather(pd *PDHelper){
 	fmt.Printf("---> expected %v actual %v delta %v \n", e, a, e - a)
 }
 
+func (t *Tables) NoReplicaTableCount() int {
+	noReplica := 0
+	for i, tb := range t.Ts {
+		if !(tb.Dropped) && (tb.ReplicaCount == 0){
+			fmt.Printf("Table %v has 0 Replica\n", i)
+			noReplica += 1
+		}
+	}
+	return noReplica
+}
+
 
 func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	// Need configure-store-limit
@@ -293,12 +356,6 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 		Replica: Replica,
 	}
 
-	if WithAlterDB {
-		for j := 0; j < 500; j++ {
-			MustExec(dbm, "create table test97.k%v(z int)", j)
-		}
-	}
-
 	var wg sync.WaitGroup
 	for t := 0; t < T; t++ {
 		wg.Add(1)
@@ -315,7 +372,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				//in := []int{0,1,2,3,4,5,6,7,8,9,10,11}
 				in := []int{0,1,2,3,4,5,6,7,8,9}
 				if WithAlterDB {
-					in = []int{-1,-2,0,1,2,3,4,5,6,7}
+					in = []int{-99, -1,-2,0,1,2,3,4,5,6,7,8,9,10,11}
 				}
 				randomIndex := rand.Intn(len(in))
 				pick := in[randomIndex]
@@ -336,7 +393,9 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				} else if pick == 7 {
 					tables.FlashbackTable(pd, db)
 				} else if pick == -1 {
-					tables2.AlterDatabaseSetReplica(pd, db, Replica, "test97")
+					tables2.AlterDatabaseSetReplica(pd, db, "test97")
+				} else if pick == -2 {
+					tables2.AlterDatabaseSetReplica(pd, db, "test97")
 				} else if pick == 8 {
 					tables.AddTable(pd, db, false, false)
 				} else if pick == 9 {
@@ -345,6 +404,10 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 					tables.SetTiFlashReplica(pd, db)
 				} else if pick == 11 {
 					tables.RemoveTiFlashReplica(pd, db)
+				} else if pick == -99 {
+					if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
+						panic("Some table not ready")
+					}
 				}
 			}
 
@@ -353,32 +416,17 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	}
 	wg.Wait()
 
-	noReplica := 0
-	for i, t := range tables.Ts {
-		if !(t.Dropped) && (t.ReplicaCount == 0){
-			fmt.Printf("Table %v has 0 Replica\n", i)
-			noReplica += 1
-		}
-	}
-
+	noReplica := tables.NoReplicaTableCount
 	if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
 		panic("Some table not ready")
 	}
 
-	if WithAlterDB {
-		if ok := WaitAllTableOK(dbm, "test97", 20, "all", noReplica); !ok {
-			panic("Some table not ready in test97")
-		}
-	}
+	later := pd.GetGroupRulesCount("tiflash")
+	tables.Check(later - origin)
 
-	if !WithAlterDB {
-		later := pd.GetGroupRulesCount("tiflash")
-		tables.Check(later - origin)
-
-		z, _ := pd.GetGroupRules("tiflash")
-		for _, x := range z {
-			fmt.Printf("===> %v %v %v\n", x.ID, x.GroupID, x.Constraints)
-		}
+	z, _ := pd.GetGroupRules("tiflash")
+	for _, x := range z {
+		fmt.Printf("===> %v %v %v\n", x.ID, x.GroupID, x.Constraints)
 	}
 
 	//var x int

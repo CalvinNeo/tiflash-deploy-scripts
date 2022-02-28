@@ -372,10 +372,10 @@ func TestMultiTiFlash() {
 }
 
 
-func TestBigTable(reuse bool, total int, Replica int){
+func TestBigTable(total int){
 	fmt.Println("START TestBigTable")
 	db := GetDB()
-	if !reuse {
+	if !*ReuseDB {
 
 		MustExec(db, "drop database test99")
 		MustExec(db, "create database test99")
@@ -406,7 +406,7 @@ func TestBigTable(reuse bool, total int, Replica int){
 
 	size := avr_size * total
 	fmt.Printf("!!!! avr_size %v Finish size %v MB\n", avr_size, float64(size) / 1024.0 / 1024.0)
-	MustExec(db, "alter table test99.bigtable set tiflash replica %v", Replica)
+	MustExec(db, "alter table test99.bigtable set tiflash replica %v", *ReplicaNum)
 	maxTick := 0
 	if ok, tick := WaitTableOK(db, "bigtable", 100, ""); ok {
 		if tick > maxTick {
@@ -549,7 +549,7 @@ func TestManyTable(total int, totalPart int, PartCount int){
 func main() {
 	flag.Parse()
 
-	TestManyTable(5000, 50, 100)
+	//TestManyTable(5000, 50, 100)
 	//TestManyTable(5000, 50, 100)
 	// TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
@@ -564,7 +564,7 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	//TestBigTable(false, 100, 1)
+	TestBigTable(1000)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()
