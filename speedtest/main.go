@@ -579,7 +579,7 @@ func main() {
 	//TestSetPlacementRule()
 	//TestPlainSet0()
 	//TestPlainAddTableReplica()
-	TestPDRuleMultiSession(5, 1, true, 100)
+	TestMultiSession(5, 1, true, 100)
 	//TestPlain()
 	//TestPlacementRules()
 	//PrintPD()

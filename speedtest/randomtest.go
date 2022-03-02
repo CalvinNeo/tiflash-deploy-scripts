@@ -37,9 +37,21 @@ func (t *Tables) SetTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if !v.Dropped && !(v.ReplicaCount == 0) {
-			t.Ts[k].ReplicaCount = 1
-			t.Ts[k].RuleCount = 1
+		if !v.Dropped && v.ReplicaCount == 0 {
+			v.ReplicaCount = *ReplicaNum
+			if v.PartitionRuleCount != nil {
+				for pk, _ := range *(v.PartitionRuleCount) {
+					if !(*(v.PartitionDropped))[pk] {
+						if (*(v.PartitionRuleCount))[pk] == 0 {
+							(*(v.PartitionRuleCount))[pk] = 1
+						}
+					}
+				}
+			} else {
+				if v.RuleCount == 0 {
+					v.RuleCount = 1
+				}
+			}
 			s := fmt.Sprintf("alter table test98.t%v set tiflash replica %v", k, t.Replica)
 			MustExec(db, s)
 			t.PrintGather(pd)
@@ -49,15 +61,22 @@ func (t *Tables) SetTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 	return ""
 }
 
-
 func (t *Tables) RemoveTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 	t.Lock()
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if !v.Dropped && !(v.ReplicaCount == 0) {
+		if !v.Dropped && v.ReplicaCount != 0 {
 			t.Ts[k].ReplicaCount = 0
-			t.Ts[k].RuleCount = 0
+			if v.PartitionRuleCount != nil {
+				for pk, _ := range *(v.PartitionRuleCount) {
+					if !(*(v.PartitionDropped))[pk] {
+						(*(v.PartitionRuleCount))[pk] -= 1
+					}
+				}
+			} else {
+				v.RuleCount -= 1
+			}
 			s := fmt.Sprintf("alter table test98.t%v set tiflash replica 0", k)
 			MustExec(db, s)
 			t.PrintGather(pd)
@@ -65,6 +84,18 @@ func (t *Tables) RemoveTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 		}
 	}
 	return ""
+}
+
+func addPartitionHelper(tb *Table) int {
+	nn := len(*(tb.PartitionRuleCount))
+	(*(tb.PartitionRuleCount))[nn] = 1
+	(*(tb.PartitionDropped))[nn] = false
+	return nn
+}
+
+func addGivenPartitionHelper(tb *Table, i int) {
+	(*(tb.PartitionRuleCount))[i] = 1
+	(*(tb.PartitionDropped))[i] = false
 }
 
 func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica bool) []string {
@@ -86,8 +117,8 @@ func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica b
 		}
 		ss := []string{fmt.Sprintf("create table test98.t%v (z int) partition by range (z) (partition p0 values less than (0))", n)}
 		if setReplica {
-			t.Ts[n].RuleCount = 1
-			t.Ts[n].ReplicaCount = 1
+			t.Ts[n].ReplicaCount = *ReplicaNum
+			addGivenPartitionHelper(t.Ts[n], 0)
 			ss = append(ss, fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica))
 		}
 		for _, e := range ss {
@@ -105,8 +136,8 @@ func (t *Tables) AddTable(pd *PDHelper, db *sql.DB, partition bool, setReplica b
 		}
 		ss := []string{fmt.Sprintf("create table test98.t%v (z int)", n)}
 		if setReplica {
-			t.Ts[n].ReplicaCount = 1
-			t.Ts[n].ReplicaCount = 1
+			t.Ts[n].ReplicaCount = *ReplicaNum
+			t.Ts[n].RuleCount = 1
 			ss = append(ss, fmt.Sprintf("alter table test98.t%v set tiflash replica %v", n, t.Replica))
 		}
 		for _, e := range ss {
@@ -122,7 +153,7 @@ func (t *Tables) TruncateTable(pd *PDHelper, db *sql.DB) string {
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if !v.Dropped {
+		if !v.Dropped && v.ReplicaCount != 0 {
 			if v.PartitionRuleCount != nil {
 				for kk, vv := range *v.PartitionDropped {
 					if !vv {
@@ -146,10 +177,8 @@ func (t *Tables) AddPartition(pd *PDHelper, db *sql.DB) string {
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if v.PartitionRuleCount != nil && !v.Dropped {
-			n := len(*(v.PartitionRuleCount))
-			(*(v.PartitionRuleCount))[n] = 1
-			(*(v.PartitionDropped))[n] = false
+		if v.PartitionRuleCount != nil && !v.Dropped && v.ReplicaCount != 0 {
+			n := addPartitionHelper(v)
 			s := fmt.Sprintf("alter table test98.t%v add partition (partition p%v values less than (%v))", k, n, n * 10)
 			MustExec(db, s)
 			t.PrintGather(pd)
@@ -164,7 +193,7 @@ func (t *Tables) TruncatePartition(pd *PDHelper, db *sql.DB) string {
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if v.PartitionRuleCount != nil && !v.Dropped {
+		if v.PartitionRuleCount != nil && !v.Dropped && v.ReplicaCount != 0 {
 			for kk, vv := range *v.PartitionDropped {
 				if !vv {
 					(*v.PartitionRuleCount)[kk] += 1
@@ -184,7 +213,7 @@ func (t *Tables) DropPartition(pd *PDHelper, db *sql.DB) string {
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if v.PartitionRuleCount != nil && !v.Dropped {
+		if v.PartitionRuleCount != nil && !v.Dropped && v.ReplicaCount != 0 {
 			for kk, vv := range *v.PartitionDropped {
 				if !vv {
 					(*v.PartitionDropped)[kk] = true
@@ -207,7 +236,7 @@ func (t *Tables) DropTable(pd *PDHelper, db *sql.DB) string {
 	defer t.Unlock()
 
 	for k, v := range t.Ts {
-		if !v.Dropped {
+		if !v.Dropped && v.ReplicaCount != 0 {
 			t.Ts[k].Dropped = true
 			s := fmt.Sprintf("drop table test98.t%v", k)
 			MustExec(db, s)
@@ -224,21 +253,22 @@ func (t *Tables) AlterDatabaseSetReplica(pd *PDHelper, db *sql.DB, DBName string
 
 	for _, v := range t.Ts {
 		if !v.Dropped {
-			if v.PartitionRuleCount != nil {
-				for pk, _ := range *(v.PartitionRuleCount) {
-					if !(*(v.PartitionDropped))[pk] {
-						(*(v.PartitionRuleCount))[pk] = *ReplicaNum
+			if v.ReplicaCount == 0 {
+				if v.PartitionRuleCount != nil {
+					for pk, _ := range *(v.PartitionRuleCount) {
+						if !(*(v.PartitionDropped))[pk] {
+							if (*(v.PartitionRuleCount))[pk] == 0 {
+								(*(v.PartitionRuleCount))[pk] = 1
+							}
+						}
+					}
+				} else {
+					if v.RuleCount == 0 {
+						v.RuleCount = 1
 					}
 				}
-			} else {
-				v.RuleCount = 1
-				v.ReplicaCount = *ReplicaNum
 			}
-		}
-		if v.PartitionRuleCount != nil && !v.Dropped {
-			n := len(*(v.PartitionRuleCount))
-			(*(v.PartitionRuleCount))[n] = 1
-			(*(v.PartitionDropped))[n] = false
+			v.ReplicaCount = *ReplicaNum
 		}
 	}
 
@@ -254,17 +284,21 @@ func (t *Tables) RemoveDatabaseSetReplica(pd *PDHelper, db *sql.DB, DBName strin
 
 	for _, v := range t.Ts {
 		if !v.Dropped {
-			v.ReplicaCount = 0
-			if v.PartitionRuleCount != nil {
-				// If has partition
-				for pk, _ := range *(v.PartitionRuleCount) {
-					if !(*(v.PartitionDropped))[pk] {
-						(*(v.PartitionRuleCount))[pk] = 0
+			if v.ReplicaCount != 0 {
+				if v.PartitionRuleCount != nil {
+					// If has partition
+					for pk, _ := range *(v.PartitionRuleCount) {
+						if !(*(v.PartitionDropped))[pk] {
+							// Maybe we have already truncated
+							(*(v.PartitionRuleCount))[pk] -= 1
+						}
 					}
+				} else {
+					// Maybe we have already truncated
+					v.RuleCount -= 1
 				}
-			} else {
-				v.RuleCount = 0
 			}
+			v.ReplicaCount = 0
 		}
 	}
 
@@ -328,8 +362,7 @@ func (t *Tables) NoReplicaTableCount() int {
 	return noReplica
 }
 
-
-func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
+func TestMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	// Need configure-store-limit
 	// https://docs.pingcap.com/zh/tidb/stable/configure-store-limit/
 	dbm := GetSession()
@@ -346,10 +379,6 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 
 	origin := pd.GetGroupRulesCount("tiflash")
 	tables := Tables{
-		Ts: make(map[int]*Table),
-		Replica: Replica,
-	}
-	tables2 := Tables{
 		Ts: make(map[int]*Table),
 		Replica: Replica,
 	}
@@ -370,7 +399,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				//in := []int{0,1,2,3,4,5,6,7,8,9,10,11}
 				in := []int{0,1,2,3,4,5,6,7,8,9}
 				if WithAlterDB {
-					in = []int{-99, -1,-2,0,1,2,3,4,5,6,7,8,9,10,11}
+					in = []int{-99,-1,-2,0,1,2,3,4,5,6,7,8,9,10,11}
 				}
 				randomIndex := rand.Intn(len(in))
 				pick := in[randomIndex]
@@ -391,20 +420,20 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				} else if pick == 7 {
 					tables.FlashbackTable(pd, db)
 				} else if pick == -1 {
-					tables2.AlterDatabaseSetReplica(pd, db, "test98")
+					tables.AlterDatabaseSetReplica(pd, db, "test98")
 				} else if pick == -2 {
-					tables2.RemoveDatabaseSetReplica(pd, db, "test98")
+					tables.RemoveDatabaseSetReplica(pd, db, "test98")
 				} else if pick == 8 {
-					tables.AddTable(pd, db, false, false)
+					//tables.AddTable(pd, db, false, false)
 				} else if pick == 9 {
-					tables.AddTable(pd, db, false, false)
+					//tables.AddTable(pd, db, false, false)
 				} else if pick == 10 {
-					tables.SetTiFlashReplica(pd, db)
+					//tables.SetTiFlashReplica(pd, db)
 				} else if pick == 11 {
-					tables.RemoveTiFlashReplica(pd, db)
+					//tables.RemoveTiFlashReplica(pd, db)
 				} else if pick == -99 {
 					noReplica := tables.NoReplicaTableCount()
-					if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
+					if ok := WaitAllTableOK(dbm, "test98", 40, "all", noReplica); !ok {
 						panic("Some table not ready")
 					}
 				}
