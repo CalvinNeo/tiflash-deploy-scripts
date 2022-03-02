@@ -584,7 +584,7 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	TestBigTable(1000)
+	//TestBigTable(1000)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()

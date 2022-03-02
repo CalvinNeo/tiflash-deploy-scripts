@@ -393,9 +393,9 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 				} else if pick == 7 {
 					tables.FlashbackTable(pd, db)
 				} else if pick == -1 {
-					tables2.AlterDatabaseSetReplica(pd, db, "test97")
+					tables2.AlterDatabaseSetReplica(pd, db, "test98")
 				} else if pick == -2 {
-					tables2.AlterDatabaseSetReplica(pd, db, "test97")
+					tables2.RemoveDatabaseSetReplica(pd, db, "test98")
 				} else if pick == 8 {
 					tables.AddTable(pd, db, false, false)
 				} else if pick == 9 {
