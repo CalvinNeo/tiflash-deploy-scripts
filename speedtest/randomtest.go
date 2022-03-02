@@ -39,6 +39,7 @@ func (t *Tables) SetTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 	for k, v := range t.Ts {
 		if !v.Dropped && !(v.ReplicaCount == 0) {
 			t.Ts[k].ReplicaCount = 1
+			t.Ts[k].RuleCount = 1
 			s := fmt.Sprintf("alter table test98.t%v set tiflash replica %v", k, t.Replica)
 			MustExec(db, s)
 			t.PrintGather(pd)
@@ -56,6 +57,7 @@ func (t *Tables) RemoveTiFlashReplica(pd *PDHelper, db *sql.DB) string {
 	for k, v := range t.Ts {
 		if !v.Dropped && !(v.ReplicaCount == 0) {
 			t.Ts[k].ReplicaCount = 0
+			t.Ts[k].RuleCount = 0
 			s := fmt.Sprintf("alter table test98.t%v set tiflash replica 0", k)
 			MustExec(db, s)
 			t.PrintGather(pd)
@@ -252,21 +254,17 @@ func (t *Tables) RemoveDatabaseSetReplica(pd *PDHelper, db *sql.DB, DBName strin
 
 	for _, v := range t.Ts {
 		if !v.Dropped {
+			v.ReplicaCount = 0
 			if v.PartitionRuleCount != nil {
+				// If has partition
 				for pk, _ := range *(v.PartitionRuleCount) {
 					if !(*(v.PartitionDropped))[pk] {
 						(*(v.PartitionRuleCount))[pk] = 0
 					}
 				}
 			} else {
-				v.RuleCount = 1
-				v.ReplicaCount = 0
+				v.RuleCount = 0
 			}
-		}
-		if v.PartitionRuleCount != nil && !v.Dropped {
-			n := len(*(v.PartitionRuleCount))
-			(*(v.PartitionRuleCount))[n] = 1
-			(*(v.PartitionDropped))[n] = false
 		}
 	}
 
@@ -418,7 +416,7 @@ func TestPDRuleMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 	wg.Wait()
 
 	noReplica := tables.NoReplicaTableCount()
-	if ok := WaitAllTableOK(dbm, "test98", 20, "all", noReplica); !ok {
+	if ok := WaitAllTableOK(dbm, "test98", 40, "all", noReplica); !ok {
 		panic("Some table not ready")
 	}
 
