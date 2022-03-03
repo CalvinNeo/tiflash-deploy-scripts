@@ -257,15 +257,11 @@ func (t *Tables) AlterDatabaseSetReplica(pd *PDHelper, db *sql.DB, DBName string
 				if v.PartitionRuleCount != nil {
 					for pk, _ := range *(v.PartitionRuleCount) {
 						if !(*(v.PartitionDropped))[pk] {
-							if (*(v.PartitionRuleCount))[pk] == 0 {
-								(*(v.PartitionRuleCount))[pk] = 1
-							}
+							(*(v.PartitionRuleCount))[pk] += 1
 						}
 					}
 				} else {
-					if v.RuleCount == 0 {
-						v.RuleCount = 1
-					}
+					v.RuleCount += 1
 				}
 			}
 			v.ReplicaCount = *ReplicaNum
@@ -433,7 +429,7 @@ func TestMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 					//tables.RemoveTiFlashReplica(pd, db)
 				} else if pick == -99 {
 					noReplica := tables.NoReplicaTableCount()
-					if ok := WaitAllTableOK(dbm, "test98", 40, "all", noReplica); !ok {
+					if ok := WaitAllTableOK(dbm, "test98", 200, "all", noReplica); !ok {
 						panic("Some table not ready")
 					}
 				}
