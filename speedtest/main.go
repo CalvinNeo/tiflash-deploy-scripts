@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
@@ -372,28 +373,29 @@ func TestMultiTiFlash() {
 }
 
 
+func MakeBigTable(db *sql.DB, schema string, total int) {
+	MustExec(db, "create table %v.bigtable(z int, t1 text, t2 text, t3 text, t4 text, t5 text, t6 text, t7 text, t8 text)", schema)
+
+	X := strings.Repeat("ABCDEFG", 2000)
+
+	for i := 0; i < total; i++ {
+		fmt.Printf("Insert %v\n", i)
+		s := fmt.Sprintf("insert into %v.bigtable values (%v,'%v','%v','%v','%v','%v','%v','%v','%v')", schema, i, X,X,X,X,X,X,X,X)
+		_, err := db.Exec(s)
+		if err != nil {
+			panic(err)
+		}
+	}
+	WaitUntil(db, fmt.Sprintf("select count(*) from %v.bigtable", schema), total, 100)
+}
+
 func TestBigTable(total int){
 	fmt.Println("START TestBigTable")
 	db := GetDB()
 	if !*ReuseDB {
-
 		MustExec(db, "drop database test99")
 		MustExec(db, "create database test99")
-
-		MustExec(db, "create table test99.bigtable(z int, t1 text, t2 text, t3 text, t4 text, t5 text, t6 text, t7 text, t8 text)")
-
-		X := strings.Repeat("ABCDEFG", 2000)
-
-		for i := 0; i < total; i++ {
-			fmt.Printf("Insert %v\n", i)
-			s := fmt.Sprintf("insert into test99.bigtable values (%v,'%v','%v','%v','%v','%v','%v','%v','%v')", i, X,X,X,X,X,X,X,X)
-			_, err := db.Exec(s)
-			if err != nil {
-				panic(err)
-			}
-		}
-		WaitUntil(db, "select count(*) from test99.bigtable", total, 100)
-
+		MakeBigTable(db, "test99", total)
 	}
 
 	time.Sleep(time.Second * 4)
@@ -538,12 +540,27 @@ func TestManyTable(total int, totalPart int, PartCount int){
 			}
 		}
 	}
+
+	MakeBigTable(db, "testmany", 50)
+
 	start := time.Now()
 	fmt.Printf("start %v\n", start)
-	MustExec(db, "alter database testmany set tiflash replica %v", *ReplicaNum)
+	MustExec(db, "[1] alter database testmany set tiflash replica %v", 1)
 	fmt.Printf("since all finish ddl1 %v at %v\n", time.Since(start), time.Now())
 	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20, 200)
-	fmt.Printf("quit cost %v at %v\n", time.Since(start), time.Now())
+	fmt.Printf("[1] quit cost %v at %v\n", time.Since(start), time.Now())
+
+
+	MustExec(db, "alter database testmany set tiflash replica 2")
+	fmt.Printf("[2] since all finish ddl1 %v at %v\n", time.Since(start), time.Now())
+	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20, 200)
+	fmt.Printf("[2] quit cost %v at %v\n", time.Since(start), time.Now())
+
+
+	MustExec(db, "alter database testmany set tiflash replica 0")
+	fmt.Printf("[0] since all finish ddl1 %v at %v\n", time.Since(start), time.Now())
+	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20, 200)
+	fmt.Printf("[0] quit cost %v at %v\n", time.Since(start), time.Now())
 }
 
 func MakeSnapshotMetric() {
@@ -569,7 +586,7 @@ func MakeSnapshotMetric() {
 func main() {
 	flag.Parse()
 
-	//TestManyTable(5000, 50, 100)
+	TestManyTable(10000, 100, 100)
 	//TestManyTable(5000, 50, 100)
 	// TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
@@ -579,7 +596,7 @@ func main() {
 	//TestSetPlacementRule()
 	//TestPlainSet0()
 	//TestPlainAddTableReplica()
-	TestMultiSession(5, 1, true, 500)
+	//TestMultiSession(5, 1, true, 500)
 	//TestPlain()
 	//TestPlacementRules()
 	//PrintPD()

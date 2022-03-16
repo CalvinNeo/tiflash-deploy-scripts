@@ -384,6 +384,7 @@ func TestMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 		y := t
 		go func(index int) {
 			db := GetSession()
+			MustExec(db, "set SESSION tidb_batch_pending_tiflash_count=5")
 			defer db.Close()
 
 			tables.AddTable(pd, db, false, true) // 1
@@ -428,7 +429,7 @@ func TestMultiSession(T int, Replica int, WithAlterDB bool, C int) {
 					tables.RemoveTiFlashReplica(pd, db)
 				} else if pick == -99 {
 					noReplica := tables.NoReplicaTableCount()
-					if ok := WaitAllTableOK(dbm, "test98", 200, "all", noReplica); !ok {
+					if ok := WaitAllTableOK(dbm, "test98", 400, "all", noReplica); !ok {
 						panic("Some table not ready")
 					}
 				}
