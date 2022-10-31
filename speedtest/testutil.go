@@ -14,6 +14,8 @@ var DBAddr = flag.String("a", "127.0.0.1:4000", "addr of tidb")
 var PDAddr = flag.String("p", "127.0.0.1:2379", "addr of pd")
 var ReuseDB = flag.Bool("r", false, "reuse")
 var ReplicaNum = flag.Int("num", 1, "replica")
+var Print = flag.Bool("print", false, "print")
+var RowSize = flag.Int("rowsize", 1000, "row size of a table")
 
 func GetSession() *sql.DB {
 	addr := fmt.Sprintf("root@tcp(%v)/", *DBAddr)
@@ -144,7 +146,9 @@ func Exec(db *sql.DB, f string, args ...interface{}) error {
 
 func MustExec(db *sql.DB, f string, args ...interface{}) {
 	s := fmt.Sprintf(f, args...)
-	fmt.Printf("MustExec %v\n", s)
+	if *Print {
+		fmt.Printf("MustExec %v\n", s)
+	}
 	_, err := db.Exec(s)
 	if err != nil {
 		panic(err)

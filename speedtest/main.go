@@ -7,6 +7,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"io"
+	"math/rand"
 	"os"
 	"runtime"
 	"strconv"
@@ -518,7 +519,6 @@ func TestSetPlacementRule() {
 	SetPlacementRuleForTable("127.0.0.1:4000", "test99", "r0")
 }
 
-
 func TestManyTable(total int, totalPart int, PartCount int){
 	fmt.Printf("START TestManyTable %v\n", *ReplicaNum)
 	db := GetSession()
@@ -539,14 +539,14 @@ func TestManyTable(total int, totalPart int, PartCount int){
 				MustExec(db, "alter table testmany.pt%v ADD PARTITION (PARTITION pn%v VALUES LESS THAN (%v))", i, lessThan, lessThan)
 			}
 		}
-	}
 
-	MakeBigTable(db, "testmany", 50)
+		MakeBigTable(db, "testmany", 50)
+	}
 
 	start := time.Now()
 	fmt.Printf("start %v\n", start)
-	MustExec(db, "[1] alter database testmany set tiflash replica %v", 1)
-	fmt.Printf("since all finish ddl1 %v at %v\n", time.Since(start), time.Now())
+	MustExec(db, "alter database testmany set tiflash replica %v", 1)
+	fmt.Printf("[1] since all finish ddl1 %v at %v\n", time.Since(start), time.Now())
 	WaitAllTableOKEx(db, "testmany", 1000000, "testmany", 0, 20, 200)
 	fmt.Printf("[1] quit cost %v at %v\n", time.Since(start), time.Now())
 
@@ -582,11 +582,68 @@ func MakeSnapshotMetric() {
 	WaitAllTableOK(db, "testmetric2", 10, "testmetric2", 0)
 }
 
+func RandomString(n int) string {
+	rand.Seed(time.Now().UnixNano())
+	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+
+	return string(b)
+}
+
+func Oncall4822() {
+	sql := "CREATE TABLE `rpt_report_result_archive` (\n`archive_type` varchar(5) COLLATE utf8mb4_general_ci NOT NULL COMMENT '数据类型（01-归档数据、02-回灌数据）',\n`index_no` varchar(32) COLLATE utf8mb4_general_ci NOT NULL COMMENT '指标标识',\n`data_date` varchar(8) COLLATE utf8mb4_general_ci NOT NULL COMMENT '数据日期',\n`org_no` varchar(32) COLLATE utf8mb4_general_ci NOT NULL COMMENT '机构标识',\n`currency` varchar(32) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '币种',\n`index_val` decimal(20,5) DEFAULT NULL COMMENT '指标值',\n`template_id` varchar(32) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '模板ID',\n`sys_time` varchar(32) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '操作日期',\nPRIMARY KEY (`archive_type`,`index_no`,`data_date`,`org_no`) /*T![clustered_index] NONCLUSTERED */\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci/*!90000 SHARD_ROW_ID_BITS=4 */ COMMENT='报表结果表（保存 归档、回灌数据）'"
+	db := GetSession()
+	MustExec(db, "use test")
+	if !*ReuseDB {
+		MustExec(db, "drop table if exists rpt_report_result_archive")
+		MustExec(db, sql)
+	}
+	MustExec(db, "alter table rpt_report_result_archive set tiflash replica 1")
+
+	insert1 := func () {
+		si := fmt.Sprintf("insert into rpt_report_result_archive values ('%v', '%v', '%v', '%v', '%v', %v, '%v', '%v')",
+			RandomString(4),
+			RandomString(30),
+			RandomString(4),
+			RandomString(30),
+			RandomString(30),
+			100,
+			RandomString(20),
+			RandomString(20),
+		)
+		MustExec(db, si)
+	}
+
+	for i := 0; i < 10000; i ++ {
+		insert1()
+		if i % 10000 == 0 {
+			fmt.Printf("!!! %v\n", i)
+		}
+	}
+
+	row := db.QueryRow(fmt.Sprintf("select * from rpt_report_result_archive limit 1"))
+	var archive_type string
+	var index_no string
+	var data_date string
+	var org_no string
+	var currency string
+	var index_val float64
+	var template_id string
+	var sys_time string
+	if err := row.Scan(&archive_type, &index_no, &data_date, &org_no, &currency, &index_val, &template_id, &sys_time); err != nil {
+		panic(err)
+	}
+}
 
 func main() {
 	flag.Parse()
+	// Oncall4822()
 
-	TestManyTable(10000, 100, 100)
+	//TestManyTable(1000, 10, 100)
 	//TestManyTable(5000, 50, 100)
 	// TestPDRuleMultiSession(5, 1, false, 100)
 	//TestSchemaPerformance(1000, 1, 1, 1)
@@ -601,7 +658,7 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	//TestBigTable(1000)
+	TestBigTable(*RowSize)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()
