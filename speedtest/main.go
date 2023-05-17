@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"go.uber.org/atomic"
 	"io"
 	"math/rand"
 	"os"
@@ -373,13 +374,20 @@ func TestMultiTiFlash() {
 	//TestOncall3793(200, 2)
 }
 
+func GetTotalLine(db *sql.DB, schema string, table string) int {
+	s := fmt.Sprintf("select count(*) from %v.%v", schema, table)
+	x := 0
+	row := db.QueryRow(s)
+	if err := row.Scan(&x); err != nil {
+		panic(err)
+	}
+	return x
+}
 
-func MakeBigTable(db *sql.DB, schema string, total int) {
-	MustExec(db, "create table %v.bigtable(z int, t1 text, t2 text, t3 text, t4 text, t5 text, t6 text, t7 text, t8 text)", schema)
-
+func WriteBigTable(db *sql.DB, schema string, total int) {
 	X := strings.Repeat("ABCDEFG", 2000)
-
-	for i := 0; i < total; i++ {
+	before := GetTotalLine(db, schema, "bigtable")
+	for i := before; i < before + total; i++ {
 		fmt.Printf("Insert %v\n", i)
 		s := fmt.Sprintf("insert into %v.bigtable values (%v,'%v','%v','%v','%v','%v','%v','%v','%v')", schema, i, X,X,X,X,X,X,X,X)
 		_, err := db.Exec(s)
@@ -387,7 +395,18 @@ func MakeBigTable(db *sql.DB, schema string, total int) {
 			panic(err)
 		}
 	}
-	WaitUntil(db, fmt.Sprintf("select count(*) from %v.bigtable", schema), total, 100)
+	WaitUntil(db, fmt.Sprintf("select count(*) from %v.bigtable", schema), before + total, 100)
+}
+
+func MakeBigTable(db *sql.DB, schema string, total int) {
+	MustExec(db, "create table %v.bigtable(z int, t1 text, t2 text, t3 text, t4 text, t5 text, t6 text, t7 text, t8 text)", schema)
+	WriteBigTable(db, schema, total)
+}
+
+func TestBigTableAgain(total int) {
+	fmt.Println("START TestBigTableAgain")
+	db := GetDB()
+	WriteBigTable(db, "test99", total)
 }
 
 func TestBigTable(total int){
@@ -639,8 +658,186 @@ func Oncall4822() {
 	}
 }
 
+func MakeConsistentTable() {
+	db := GetSession()
+	if !*ReuseDB {
+		_, err := db.Exec("DROP DATABASE IF EXISTS db3")
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = db.Exec("CREATE DATABASE db3")
+		if err != nil {
+			panic(err)
+		}
+		sql := "CREATE TABLE `db3`.`common_handle4` (\n  `a` bigint(20) NOT NULL /*T![auto_rand] AUTO_RANDOM(5) */,\n  `b` int(11) DEFAULT NULL,\n  `c` varchar(100) NOT NULL,\n  `d` char(100) DEFAULT NULL,\n  `e` float DEFAULT NULL,\n  `g` double DEFAULT NULL,\n  `h` decimal(8,4) DEFAULT NULL,\n  `i` date DEFAULT NULL,\n  `j` datetime DEFAULT NULL,\n  PRIMARY KEY (`a`,`c`) /*T![clustered_index] CLUSTERED */\n);"
+		MustExec(db, sql)
+		sql = "CREATE TABLE `db3`.`common_handle5` (\n  `a` bigint(20) NOT NULL /*T![auto_rand] AUTO_RANDOM(5) */,\n  `b` int(11) DEFAULT NULL,\n  `c` varchar(100) NOT NULL,\n  `d` char(100) DEFAULT NULL,\n  `e` float DEFAULT NULL,\n  `g` double DEFAULT NULL,\n  `h` decimal(8,4) DEFAULT NULL,\n  `i` date DEFAULT NULL,\n  `j` datetime DEFAULT NULL,\n  PRIMARY KEY (`a`,`c`) /*T![clustered_index] CLUSTERED */\n);"
+		MustExec(db, sql)
+	}
+	db.Exec("use db3")
+}
+
+func TestConsistentWithSchemaStatic(){
+	fmt.Println("Start TestConsistentWithSchemaStatic")
+	MakeConsistentTable()
+	db := GetDB()
+	for i := 0; i < 9000; i++ {
+		MustExec(db, "insert into db3.common_handle4 (a,b,c,d,e,g,h,i,j) values (%v,%v,\"a\",\"a\",1.0,1.0,2.0,\"2008-11-11\",\"2008-11-11 11:11:11\")", i, i)
+	}
+	MustExec(db, "alter table db3.common_handle4 set tiflash replica %v", *ReplicaNum)
+}
+
+func queryWithTx(tx *sql.Tx, q string) ([]string, error) {
+	rowValues := make([]string, 0)
+	rows, err := tx.Query(q)
+	if err != nil {
+		return rowValues, err
+	}
+	defer rows.Close()
+	cols, err := rows.Columns()
+	if err != nil {
+		return rowValues, err
+	}
+	values := make([]interface{}, len(cols))
+	results := make([]sql.NullString, len(cols))
+	for i := range values {
+		values[i] = &results[i]
+	}
+	for rows.Next() {
+		if err := rows.Scan(values...); err != nil {
+			return rowValues, err
+		}
+		allFields := ""
+		for _, v := range results {
+			if !v.Valid {
+				allFields += "NULL"
+				continue
+			}
+			allFields += v.String
+		}
+		rowValues = append(rowValues, allFields)
+	}
+	if err := rows.Err(); err != nil {
+		return rowValues, err
+	}
+	return rowValues, nil
+}
+
+func testEq(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestConsistentWithSchemaDynamic(prelimtotal int, total int){
+	fmt.Println("Start TestConsistentWithSchemaDynamic")
+	db := GetSession()
+	MakeConsistentTable()
+	MustExec(db, "set @@allow_auto_random_explicit_insert = true;")
+	for i := 0; i < prelimtotal; i++ {
+		if i % 1000 == 0 {
+			fmt.Printf("finish prelim add %v\n", i)
+		}
+		MustExec(db, "insert into db3.common_handle4 (a,b,c,d,e,g,h,i,j) values (%v,%v,\"a\",\"a\",1.0,1.0,2.0,\"2008-11-11\",\"2008-11-11 11:11:11\")", i, i)
+		MustExec(db, "insert into db3.common_handle5 (a,b,c,d,e,g,h,i,j) values (%v,%v,\"a\",\"a\",1.0,1.0,2.0,\"2008-11-11\",\"2008-11-11 11:11:11\")", i, i)
+	}
+	MustExec(db, "alter table db3.common_handle4 set tiflash replica %v", *ReplicaNum)
+	MustExec(db, "alter table db3.common_handle5 set tiflash replica %v", *ReplicaNum)
+
+	if ok, _ := WaitTableOKWithDBName(db, "db3", "common_handle4", 30, ""); ok {
+		fmt.Printf("wait finished \n")
+	} else {
+		panic("wait fail")
+	}
+
+	if ok, _ := WaitTableOKWithDBName(db, "db3", "common_handle5", 30, ""); ok {
+		fmt.Printf("wait finished \n")
+	} else {
+		panic("wait fail")
+	}
+
+	time.Sleep(time.Second * 2)
+	var wg sync.WaitGroup
+	var finished atomic.Bool
+	finished.Store(false)
+	go func() {
+		wg.Add(1)
+		db1 := db
+		MustExec(db1, "set @@allow_auto_random_explicit_insert = true;")
+		for i := prelimtotal; i < prelimtotal + total; i++ {
+			// insert into db3.common_handle4 (a,b,c,d,e,g,h,i,j) values (99999,99999,"a","a",1.0,1.0,2.0,"2008-11-11","2008-11-11 11:11:11")
+			if i % 1000 == 0 {
+				fmt.Printf("finish add %v\n", i)
+			}
+			MustExec(db1, "insert into db3.common_handle4 (a,b,c,d,e,g,h,i,j) values (%v,%v,\"a\",\"a\",1.0,1.0,2.0,\"2008-11-11\",\"2008-11-11 11:11:11\")", i, i)
+			MustExec(db1, "insert into db3.common_handle5 (a,b,c,d,e,g,h,i,j) values (%v,%v,\"a\",\"a\",1.0,1.0,2.0,\"2008-11-11\",\"2008-11-11 11:11:11\")", i, i)
+		}
+		finished.Store(true)
+		wg.Done()
+	}()
+
+	for {
+		if finished.Load() == true {
+			fmt.Printf("finished === \n")
+			break
+		}
+		ctx := context.Background()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			panic("error tx")
+		}
+
+		qind1 := fmt.Sprintf("select /*+ use_index(%s,PRIMARY) */  count(*) from %s", "db3.common_handle4", "db3.common_handle4")
+		qnoind1 := fmt.Sprintf("select /*+ ignore_index(%s,PRIMARY) */  count(*) from %s", "db3.common_handle4", "db3.common_handle4")
+		qind2 := fmt.Sprintf("select /*+ use_index(%s,PRIMARY) */  count(*) from %s", "db3.common_handle5", "db3.common_handle5")
+		qnoind2 := fmt.Sprintf("select /*+ ignore_index(%s,PRIMARY) */  count(*) from %s", "db3.common_handle5", "db3.common_handle5")
+		qs := []string{qind1, qnoind1, qind2, qnoind2}
+		var tso uint64
+		for _, q := range qs {
+			if err := tx.QueryRow("select @@tidb_current_ts").Scan(&tso); err != nil {
+				panic("error tso")
+			}
+			if _, err = tx.Exec("set @@tidb_isolation_read_engines='tiflash';"); err != nil {
+				panic(fmt.Errorf("error tiflash %v", err))
+			}
+			rowValuesTiFlash, err := queryWithTx(tx, q)
+			if err != nil {
+				panic(fmt.Errorf("error tiflash %v", err))
+			}
+			if _, err = tx.Exec("set @@tidb_isolation_read_engines='tikv';"); err != nil {
+				panic(fmt.Errorf("error tikv %v", err))
+			}
+			rowValuesTiKV, err := queryWithTx(tx, q)
+			if err != nil {
+				panic(fmt.Errorf("error tikv %v", err))
+			}
+			if !testEq(rowValuesTiKV, rowValuesTiFlash) {
+				fmt.Printf("tso %d, tikv: %v, tiflash %v \n", tso, rowValuesTiKV, rowValuesTiFlash)
+			} else {
+				fmt.Printf("verify successfully tikv %v tiflash %v\n", rowValuesTiKV, rowValuesTiFlash)
+			}
+		}
+		err = tx.Commit()
+		if err != nil {
+			panic("error commit")
+		}
+		time.Sleep(time.Second * 1)
+	}
+
+	wg.Wait()
+	db.Close()
+}
+
 func main() {
 	flag.Parse()
+	TestConsistentWithSchemaDynamic(*PrelimRowSize, *RowSize)
 	// Oncall4822()
 
 	//TestManyTable(1000, 10, 100)
@@ -658,7 +855,8 @@ func main() {
 	//TestPlacementRules()
 	//PrintPD()
 	//TestTruncateTableTombstone(40, 4, 1)
-	TestBigTable(*RowSize)
+	//TestBigTable(*RowSize)
+	//TestBigTableAgain(*RowSize)
 	//TestBigTable(false, 30000, 1)
 
 	// TestPlain()

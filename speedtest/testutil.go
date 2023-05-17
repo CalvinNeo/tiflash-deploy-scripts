@@ -16,6 +16,7 @@ var ReuseDB = flag.Bool("r", false, "reuse")
 var ReplicaNum = flag.Int("num", 1, "replica")
 var Print = flag.Bool("print", false, "print")
 var RowSize = flag.Int("rowsize", 1000, "row size of a table")
+var PrelimRowSize = flag.Int("prelimsize", 1000, "prelim row size of a table")
 
 func GetSession() *sql.DB {
 	addr := fmt.Sprintf("root@tcp(%v)/", *DBAddr)
@@ -33,14 +34,16 @@ func GetDB() *sql.DB {
 		panic(err)
 	}
 
-	_, err = db.Exec("DROP DATABASE IF EXISTS test99")
-	if err != nil {
-		panic(err)
-	}
+	if !*ReuseDB {
+		_, err = db.Exec("DROP DATABASE IF EXISTS test99")
+		if err != nil {
+			panic(err)
+		}
 
-	_, err = db.Exec("CREATE DATABASE test99")
-	if err != nil {
-		panic(err)
+		_, err = db.Exec("CREATE DATABASE test99")
+		if err != nil {
+			panic(err)
+		}
 	}
 	return db
 }
@@ -210,13 +213,17 @@ func WaitAllTableOK(db *sql.DB, dbn string, to int, tag string, noReplica int) b
 }
 
 func WaitTableOK(db *sql.DB, tbn string, to int, tag string) (bool, int) {
+	return WaitTableOKWithDBName(db, "test99", tbn, to, tag)
+}
+
+func WaitTableOKWithDBName(db *sql.DB, dbname string, tbn string, to int, tag string) (bool, int) {
 	tick := 0
 	for {
 		select {
 		case <-time.After(1 * time.Second):
 			fmt.Printf("Normal check %v tag %v retry %v\n", tbn, tag, tick)
 			var x int
-			s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = 'test99' and TABLE_NAME = '%v';", tbn)
+			s := fmt.Sprintf("SELECT count(*) FROM information_schema.tiflash_replica where progress = 1 and table_schema = '%v' and TABLE_NAME = '%v';", dbname, tbn)
 			row := db.QueryRow(s)
 			if err := row.Scan(&x); err != nil {
 				panic(err)
