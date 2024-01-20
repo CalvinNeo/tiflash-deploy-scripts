@@ -1,0 +1,167 @@
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/data3/luorongzhen/tidb-deploy-s3/"
+  data_dir: "/data3/luorongzhen/tidb-data-s3/"
+  # arch: "amd64"
+
+server_configs:
+  pd:
+    replication.enable-placement-rules: true
+
+monitored:
+  node_exporter_port: 11001
+  blackbox_exporter_port: 11002
+
+pd_servers:
+  - host: 127.0.0.1
+    client_port: 11003
+    peer_port: 11004
+    config:
+      keyspace.pre-alloc: ["a"]
+      schedule.merge-schedule-limit: 0
+      schedule.low-space-ration: 1.0
+      schedule.replica-schedule-limit: 500
+      replication.max-replica: 1
+
+tidb_servers:
+  - host: 127.0.0.1
+    port: 11005
+    status_port: 11006
+    config:
+      keyspace-name: "a"
+      enable-telemetry: false
+      # ratelimit.full-speed: 1048576000
+      # ratelimit.full-speed-capacity: 1048576000
+      # ratelimit.low-speed-watermark: 1048576000000
+      # ratelimit.block-write-watermark: 1048576000000
+      log.level: "debug"
+      # optracing.enable: true
+      security.enable-sem: false
+      tiflash-replicas.constraints: [{"key": "engine", "op": "in", "values": ["tiflash"]}, {"key": "engine_role", "op": "in", "values": ["write"]}]
+      tiflash-replicas.group-id: "enable_s3_wn_region"
+      tiflash-replicas.extra-s3-rule: false
+      tiflash-replicas.min-count: 1
+      disaggregated-tiflash: true
+      # 如果你的环境没有部署 AutoScaler ，要加下面的，否则设置为 true ，并设置后 autoscaler-addr
+      use-autoscaler: false
+
+tikv_servers:
+  - host: 127.0.0.1
+    port: 11007
+    status_port: 11008
+    config:
+      storage.enable-ttl:  true
+      storage.api-version:  2
+      dfs.prefix:  "local-cluster"
+      dfs.s3-endpoint:  "http://127.0.0.1:11999"
+      dfs.s3-key-id:  "minioadmin"
+      dfs.s3-secret-key:  "minioadmin"
+      dfs.s3-bucket:  "tikv-cse-s3"
+      dfs.s3-region:  "local"
+
+tiflash_servers:
+  - host: 127.0.0.1
+    tcp_port: 12001
+    http_port: 12002
+    flash_service_port: 12003
+    flash_proxy_port: 12004
+    flash_proxy_status_port: 12005
+    metrics_port: 12006
+    config:
+      storage.api_version: 2
+      profiles.default.remote_checkpoint_only_upload_manifest: false
+      profiles.default.fap_handle_concurrency: 10
+      profiles.default.fap_task_timeout_seconds: 120
+      # 如果要部署存算分离 tiflash ，需要额外加 S3 配置项
+      flash.disaggregated_mode: tiflash_write
+      storage.main.dir: [ /data3/luorongzhen/tidb-data-s3/tiflash-w1/data ]
+      storage.s3.bucket: "tiflash-cse-s3"
+      storage.s3.root: "/"
+      storage.s3.endpoint: "http://127.0.0.1:11999"
+      storage.s3.access_key_id: minioadmin
+      storage.s3.secret_access_key: minioadmin
+      log.level: "debug"
+    learner_config:
+      log-level: debug
+      dfs.prefix: "local-cluster"
+      dfs.s3-endpoint: "http://127.0.0.1:11999"
+      dfs.s3-key-id: "minioadmin"
+      dfs.s3-secret-key: "minioadmin"
+      dfs.s3-bucket: "tikv-cse-s3"
+      dfs.s3-region: "local"
+      storage.api-version: 2
+      storage.enable-ttl: true
+      engine-store:
+        enable-fast-add-peer: true
+  - host: 127.0.0.1
+    tcp_port: 12011
+    http_port: 12012
+    flash_service_port: 12013
+    flash_proxy_port: 12014
+    flash_proxy_status_port: 12015
+    metrics_port: 12016
+    config:
+      storage.api_version: 2
+      profiles.default.remote_checkpoint_only_upload_manifest: false
+      profiles.default.fap_handle_concurrency: 10
+      profiles.default.fap_task_timeout_seconds: 120
+      # 如果要部署存算分离 tiflash ，需要额外加 S3 配置项
+      flash.disaggregated_mode: tiflash_write
+      storage.main.dir: [ /data3/luorongzhen/tidb-data-s3/tiflash-w2/data ]
+      storage.s3.bucket: "tiflash-cse-s3"
+      storage.s3.root: "/"
+      storage.s3.endpoint: "http://127.0.0.1:11999"
+      storage.s3.access_key_id: minioadmin
+      storage.s3.secret_access_key: minioadmin
+      log.level: "debug"
+    learner_config:
+      log-level: debug
+      dfs.prefix: "local-cluster"
+      dfs.s3-endpoint: "http://127.0.0.1:11999"
+      dfs.s3-key-id: "minioadmin"
+      dfs.s3-secret-key: "minioadmin"
+      dfs.s3-bucket: "tikv-cse-s3"
+      dfs.s3-region: "local"
+      storage.api-version: 2
+      storage.enable-ttl: true
+      engine-store:
+        enable-fast-add-peer: true
+  - host: 127.0.0.1
+    tcp_port: 12021
+    http_port: 12022
+    flash_service_port: 12023
+    flash_proxy_port: 12024
+    flash_proxy_status_port: 12025
+    metrics_port: 12026
+    config:
+      flash.disaggregated_mode: tiflash_compute
+      storage.main.dir: [ /data3/luorongzhen/tidb-data-s3/tiflash-r1/data ]
+      storage.s3.bucket: "tiflash-cse-s3"
+      storage.s3.root: "/"
+      storage.s3.endpoint: "http://127.0.0.1:11999"
+      storage.s3.access_key_id: minioadmin
+      storage.s3.secret_access_key: minioadmin
+    learner_config:
+      log-level: debug
+      dfs.prefix: "local-cluster"
+      dfs.s3-endpoint: "http://127.0.0.1:11999"
+      dfs.s3-key-id: "minioadmin"
+      dfs.s3-secret-key: "minioadmin"
+      dfs.s3-bucket: "tikv-cse-s3"
+      dfs.s3-region: "local"
+      storage.api-version: 2
+      storage.enable-ttl: true
+      
+monitoring_servers:
+  - host: 127.0.0.1
+    port: 11201
+
+alertmanager_servers:
+  - host: 127.0.0.1
+    web_port: 11202
+    cluster_port: 11203
+
+grafana_servers:
+  - host: 127.0.0.1
+    port: 11204

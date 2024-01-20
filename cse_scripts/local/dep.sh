@@ -35,7 +35,7 @@ tiup cluster start calvin-cse-s3 -R pd
 tiup cluster start calvin-cse-s3 -R tikv
 tiup ctl:v6.5.2 pd -u http://127.0.0.1:11003 config set replication.max-replicas 1
 # 如果 pd 配置文件中有 pre-alloc 提前分配租户，这里就不用再手动创建了
-# curl -X POST http://localhost:2379/pd/api/v2/keyspaces -H 'Content-Type: application/json' -d '{"name":"tenant-1"}'
+# curl -X POST http://localhost:2379/pd/api/v2/keyspaces -H 'Content-Type: application/json' -d '{"name":"a"}'
 
 tiup cluster start calvin-cse-s3
 

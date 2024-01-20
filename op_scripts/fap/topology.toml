@@ -1,0 +1,88 @@
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/tidb-deploy"
+
+server_configs:
+  tidb: {}
+  tikv: {}
+  pd: {}
+  tiflash: {}
+
+tidb_servers:
+  - host: 172.31.7.1
+    config:
+      disaggregated-tiflash: true
+      use-autoscaler: false
+  - host: 172.31.7.2
+    config:
+      disaggregated-tiflash: true
+      use-autoscaler: false
+
+tikv_servers:
+  - host: 172.31.6.1
+  - host: 172.31.6.2
+  - host: 172.31.6.3
+
+tiflash_servers:
+  - host: 172.31.9.1
+    config:
+      flash.disaggregated_mode: tiflash_write
+      storage.s3.endpoint: http://s3.us-west-2.amazonaws.com
+      storage.s3.bucket: calvin-cloud-232f927d-tiflash
+      storage.s3.root: /
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+      profiles.default.remote_checkpoint_only_upload_manifest: false 
+    learner_config:
+      engine-store:
+        enable-fast-add-peer: true
+  - host: 172.31.9.2
+    config:
+      flash.disaggregated_mode: tiflash_write
+      storage.s3.endpoint: http://s3.us-west-2.amazonaws.com
+      storage.s3.bucket: calvin-cloud-232f927d-tiflash
+      storage.s3.root: /
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+      profiles.default.remote_checkpoint_only_upload_manifest: false 
+    learner_config:
+      engine-store:
+        enable-fast-add-peer: true
+  - host: 172.31.10.1
+    config:
+      delta_index_cache_size: 2000
+      flash.disaggregated_mode: tiflash_compute
+      storage.s3.endpoint: http://s3.us-west-2.amazonaws.com
+      storage.s3.bucket: calvin-cloud-232f927d-tiflash
+      storage.s3.root: /
+      storage.remote.cache.dir: /tidb-deploy/tiflash-9000/remote_cache
+      storage.remote.cache.capacity: 100000000000
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+  - host: 172.31.10.2
+    config:
+      delta_index_cache_size: 2000
+      flash.disaggregated_mode: tiflash_compute
+      storage.s3.endpoint: http://s3.us-west-2.amazonaws.com
+      storage.s3.bucket: calvin-cloud-232f927d-tiflash
+      storage.s3.root: /
+      storage.remote.cache.dir: /tidb-deploy/tiflash-9000/remote_cache
+      storage.remote.cache.capacity: 100000000000
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+  - host: 172.31.10.3
+    config:
+      delta_index_cache_size: 2000
+      flash.disaggregated_mode: tiflash_compute
+      storage.s3.endpoint: http://s3.us-west-2.amazonaws.com
+      storage.s3.bucket: calvin-cloud-232f927d-tiflash
+      storage.s3.root: /
+      storage.remote.cache.dir: /tidb-deploy/tiflash-9000/remote_cache
+      storage.remote.cache.capacity: 100000000000
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+
+pd_servers:
+  - host: 172.31.8.1
+
+monitoring_servers:
+  - host: 172.31.8.1
+
+grafana_servers:
+  - host: 172.31.8.1

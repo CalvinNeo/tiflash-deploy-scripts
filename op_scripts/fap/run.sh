@@ -1,3 +1,8 @@
+# 创建
+terraform init
+terraform apply -auto-approve
+
+
 tiup cluster destroy test -y
 
 tiup cluster deploy test nightly ./topology.yaml --user ubuntu -i ~/.ssh/id_rsa --yes
@@ -39,3 +44,5 @@ echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 2' | mysql \
 
 # 清理
 tiup cluster clean test --all -y
+
+terraform destroy -auto-approve
