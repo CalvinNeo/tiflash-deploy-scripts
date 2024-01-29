@@ -42,6 +42,31 @@ echo 'select * from information_schema.tiflash_replica' | mysql \
 echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 2' | mysql \
 -u root --host 172.31.7.1 --port 4000
 
+
+# 检查结果
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[tpcc.orders])*/ count(*) from tpcc.orders;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[tpcc.orders])*/ count(*) from tpcc.orders;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[tpcc.stock])*/ count(*) from tpcc.stock;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[tpcc.stock])*/ count(*) from tpcc.stock;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[tpcc.warehouse])*/ count(*) from tpcc.warehouse;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[tpcc.warehouse])*/ count(*) from tpcc.warehouse;"
+
+
+# 改变测试环境
+# 禁用 fap
+ssh 172.31.9.1
+ssh 172.31.9.2
+sudo chmod 777 /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
+sudo sed -i 's/enable-fast-add-peer = true/enable-fast-add-peer = false/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
+
+sudo sed -i 's/enable-fast-add-peer = false/enable-fast-add-peer = true/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
+
+
+sudo chmod 777 /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
+sudo sed -i 's/region-worker-tick-interval = "1s"/region-worker-tick-interval = "5s"/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
+
 # 清理
 tiup cluster clean test --all -y
 
