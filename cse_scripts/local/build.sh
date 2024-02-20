@@ -25,8 +25,15 @@ git fetch origin cloud-engine-on-release-7.4
 git checkout -b cloud-engine-on-release-7.4 remotes/origin/cloud-engine-on-release-7.4
 git submodule update --init --recursive
 mkdir -p build/debug
+
 cd build/debug
 cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash
+make tiflash -j40 && make install
+cd install_tiflash && rm -rf tiflash/bin
+tar -czvf tiflash.tar.gz ./tiflash
+
+cd build/release
+cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash
 make tiflash -j40 && make install
 cd install_tiflash && rm -rf tiflash/bin
 tar -czvf tiflash.tar.gz ./tiflash
