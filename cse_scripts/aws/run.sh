@@ -46,7 +46,7 @@ mysql --host 172.31.7.1 --port 4000 -u root -e "alter database chbenchmark set t
 mysql --host 172.31.7.1 --port 4000 -u root -e "select * from information_schema.tiflash_replica;"
 mysql --host 172.31.7.1 --port 4000 -u root -e "alter database chbenchmark set tiflash replica 2;"
 
-mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[chbenchmark.stock])*/ count(*) from chbenchmark.stock;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[chbenchmark.stock]) */ count(*) from chbenchmark.stock;"
 mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[chbenchmark.stock])*/ count(*) from chbenchmark.stock;"
 mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[chbenchmark.orders])*/ count(*) from chbenchmark.orders;"
 mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[chbenchmark.orders])*/ count(*) from chbenchmark.orders;"

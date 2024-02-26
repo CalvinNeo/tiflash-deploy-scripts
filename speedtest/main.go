@@ -835,9 +835,50 @@ func TestConsistentWithSchemaDynamic(prelimtotal int, total int){
 	db.Close()
 }
 
+func TestBigTxn(total int) {
+	fmt.Println("Start TestBigTxn")
+	db := GetSession()
+	MakeConsistentTable()
+	MustExec(db, "alter table db3.common_handle5 set tiflash replica %v", *ReplicaNum)
+	MustExec(db, "set @@tidb_enable_pipelined_dml = true;")
+	MustExec(db, "set @@allow_auto_random_explicit_insert = true;")
+
+	MustExec(db, "begin;")
+	for i := 0; i < total; i++ {
+		if i % 1000 == 0 {
+			fmt.Printf("finish prelim add %v\n", i)
+		}
+		MustExec(db, "insert into db3.common_handle5 (a,b,c,d,e,g,h,i,j) values (%v,%v,\"a\",\"a\",1.0,1.0,2.0,\"2008-11-11\",\"2008-11-11 11:11:11\")", i, i)
+	}
+	MustExec(db, "commit;")
+
+	if ok, _ := WaitTableOKWithDBName(db, "db3", "common_handle5", 30, ""); ok {
+		fmt.Printf("wait finished \n")
+	} else {
+		panic("wait fail")
+	}
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	rowValuesTiKV, err := queryWithTx(tx, "select /*+read_from_storage(tikv[db3.common_handle5])*/ count(*) from db3.common_handle5")
+	if err != nil {
+		panic(fmt.Errorf("error tiflash %v", err))
+	} else {
+		fmt.Printf("Has tikv %v\n", rowValuesTiKV[0])
+	}
+	rowValuesTiFlash, err := queryWithTx(tx, "select /*+read_from_storage(tiflash[db3.common_handle5])*/ count(*) from db3.common_handle5")
+	if err != nil {
+		panic(fmt.Errorf("error tiflash %v", err))
+	} else {
+		fmt.Printf("Has tiflash %v\n", rowValuesTiFlash[0])
+	}
+	tx.Commit()
+}
+
 func main() {
 	flag.Parse()
-	TestConsistentWithSchemaDynamic(*PrelimRowSize, *RowSize)
+	TestBigTxn(*RowSize)
+	// TestConsistentWithSchemaDynamic(*PrelimRowSize, *RowSize)
 	// Oncall4822()
 
 	//TestManyTable(1000, 10, 100)
