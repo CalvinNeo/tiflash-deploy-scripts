@@ -835,9 +835,34 @@ func TestConsistentWithSchemaDynamic(prelimtotal int, total int){
 	db.Close()
 }
 
+func TestProactiveFlushCompactLog() {
+	fmt.Println("Start TestProactiveFlushCompactLog")
+	db := GetSession()
+	
+	if *ReuseDB {
+	} else {
+		Exec(db, "drop database test97")
+		Exec(db, "create database test97")
+		Exec(db, "create table test97.t(a int)")
+	}
+	
+	MustExec(db, "set @@allow_auto_random_explicit_insert = true;")
+	MustExec(db, "alter table test97.t set tiflash replica %v", *ReplicaNum)
+	i := 0
+	for {
+		if i % 10 == 0 {
+			fmt.Printf("====> %v\n", i)
+		}
+		i += 1
+		MustExec(db, "insert into test97.t (a) values (%v)", i)
+		time.Sleep(time.Millisecond * 10000)
+	}
+}
+
 func main() {
 	flag.Parse()
-	TestConsistentWithSchemaDynamic(*PrelimRowSize, *RowSize)
+	TestProactiveFlushCompactLog();
+	// TestConsistentWithSchemaDynamic(*PrelimRowSize, *RowSize)
 	// Oncall4822()
 
 	//TestManyTable(1000, 10, 100)
