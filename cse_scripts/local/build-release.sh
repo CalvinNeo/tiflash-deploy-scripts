@@ -21,8 +21,8 @@ cd target/release/ && tar -czvf tikv.tar.gz tikv-server
 
 git clone git@github.com:tidbcloud/tiflash-cse.git
 cd tiflash-cse
-git fetch origin cloud-engine-on-release-7.4
-git checkout -b cloud-engine-on-release-7.4 remotes/origin/cloud-engine-on-release-7.4
+git fetch origin cloud-engine-on-release-7.5
+git checkout -b cloud-engine-on-release-7.5 remotes/origin/cloud-engine-on-release-7.5
 git submodule update --init --recursive
 mkdir -p build/release
 cd build/release
