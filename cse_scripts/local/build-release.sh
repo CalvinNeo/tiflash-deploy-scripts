@@ -14,8 +14,10 @@ export MIN_TIKV_VERSION=6.1.0 && export REGISTER_METRICS_INIT=false && make serv
 cd bin
 tar -czvf tidb.tar.gz tidb-server
 
-git clone git@github.com:tidbcloud/cloud-storage-engine.git
+git clone git@github.com:tidbcloud/cloud-storage-engine
 cd cloud-storage-engine
+git fetch origin cloud-engine
+git checkout -b cloud-engine remotes/origin/cloud-engine
 make release
 cd target/release/ && tar -czvf tikv.tar.gz tikv-server
 

@@ -1,25 +1,27 @@
 # terraform 准备
+# 也就是使用
+# https://github.com/CalvinNeo/terraform-cloud-native-tiflash/tree/serverless-dev
+
 git checkout serverless-dev
 terraform init
 terraform apply -auto-approve
 
 # 开发机
 
-export UBUNTU=ubuntu@54.244.211.232
-scp /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $UBUNTU:/home/ubuntu/tiflash.tar.gz
-scp /DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz $UBUNTU:/home/ubuntu/pd.tar.gz
-scp /DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz $UBUNTU:/home/ubuntu/tidb.tar.gz
-scp /DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz $UBUNTU:/home/ubuntu/tikv.tar.gz
-scp /data1/calvin/bin/br-cse $UBUNTU:/home/ubuntu/br-cse
+export U=ubuntu@54.244.211.232
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz $U:/home/ubuntu/pd.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz $U:/home/ubuntu/tidb.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz $U:/home/ubuntu/tikv.tar.gz
+scp calvin@10.2.12.81:/data1/calvin/bin/br-cse $U:/home/ubuntu/br-cse
 
 # 中控机
 # 需要先配置 ~/.ssh/authorized_keys
 
-tiup cluster deploy -y test v6.6.0 topology.yaml --native-ssh=1 --ignore-config-check
+tiup cluster deploy -y test v8.0.0 topology.yaml --native-ssh=1 --ignore-config-check
 tiup cluster destroy test -y
 
-tiup cluster deploy -y test v6.6.0 topology.yaml --native-ssh=1 --ignore-config-check
-
+tiup cluster deploy -y test v8.0.0 topology.yaml --native-ssh=1 --ignore-config-check
 tiup cluster patch -y test tiflash.tar.gz --overwrite --offline -R tiflash
 tiup cluster patch -y test pd.tar.gz --overwrite --offline -R pd
 tiup cluster patch -y test tidb.tar.gz --overwrite --offline -R tidb
@@ -28,7 +30,7 @@ tiup cluster patch -y test tikv.tar.gz --overwrite --offline -R tikv
 
 tiup cluster start test -R pd
 tiup cluster start test -R tikv
-tiup ctl:v6.5.2 pd -u http://172.31.8.1:2379 config set replication.max-replicas 1
+tiup ctl:v7.5.0 pd -u http://172.31.8.1:2379 config set replication.max-replicas 1
 
 tiup cluster start test 
 
@@ -47,10 +49,38 @@ mysql --host 172.31.7.1 --port 4000 -u root -e "select * from information_schema
 mysql --host 172.31.7.1 --port 4000 -u root -e "alter database chbenchmark set tiflash replica 2;"
 
 mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[chbenchmark.stock]) */ count(*) from chbenchmark.stock;"
-mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[chbenchmark.stock])*/ count(*) from chbenchmark.stock;"
-mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[chbenchmark.orders])*/ count(*) from chbenchmark.orders;"
-mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tikv[chbenchmark.orders])*/ count(*) from chbenchmark.orders;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[chbenchmark.stock]) */ count(*) from chbenchmark.stock;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[chbenchmark.orders]) */ count(*) from chbenchmark.orders;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[chbenchmark.orders]) */ count(*) from chbenchmark.orders;"
 
+
+mysql --host 172.31.7.1 --port 4000 -u root -e "alter database test set tiflash replica 1;"
+mysql --host 172.31.7.1 --port 4000 -u root -e "select * from information_schema.tiflash_replica;"
+mysql --host 172.31.7.1 --port 4000 -u root -e "alter database test set tiflash replica 2;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.customer]) */ count(*) from test.customer;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.customer]) */ count(*) from test.customer;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.lineitem]) */ count(*) from test.lineitem;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.lineitem]) */ count(*) from test.lineitem;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.nation]) */ count(*) from test.nation;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.nation]) */ count(*) from test.nation;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.orders]) */ count(*) from test.orders;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.orders]) */ count(*) from test.orders;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.part]) */ count(*) from test.part;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.part]) */ count(*) from test.part;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.partsupp]) */ count(*) from test.partsupp;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.partsupp]) */ count(*) from test.partsupp;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.region]) */ count(*) from test.region;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.region]) */ count(*) from test.region;"
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tiflash[test.supplier]) */ count(*) from test.supplier;"
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+ read_from_storage(tikv[test.supplier]) */ count(*) from test.supplier;"
 
 mysql --host 172.31.7.1 --port 4000 -u root -e "alter database rtdb set tiflash replica 1;"
 mysql --host 172.31.7.1 --port 4000 -u root -e "alter database tpcc set tiflash replica 1;"
