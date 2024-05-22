@@ -1,0 +1,4 @@
+# OnPrem
+sum(tiflash_system_current_metric_RaftNumPrehandlingSubTasks{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}) by (instance)
+# Serverless
+sum(tiflash_system_current_metric_RaftNumPrehandlingSubTasks{instance=~"$instance"}) by (instance)
