@@ -3,3 +3,10 @@ storages_thread_memory_usage{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_clu
 
 tiflash_raft_proxy_thread_memory_usage{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type=~"alloc_.*"}
 -tiflash_raft_proxy_thread_memory_usage{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type=~"dealloc_.*"}
+
+{{instance}}-{{type}}
+
+
+storages_thread_memory_usage{type=~"alloc_.*"}
+-storages_thread_memory_usage{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type=~"dealloc_.*"}
+

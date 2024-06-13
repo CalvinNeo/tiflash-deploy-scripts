@@ -1,0 +1,4 @@
+curl http://172.31.9.1:20292/debug/pprof/profile?seconds=10 -o xxx
+
+document.getElementById("frames").setAttribute("width", "1000")
+document.getElementsByTagName("svg")[0].setAttribute("width", "1000")

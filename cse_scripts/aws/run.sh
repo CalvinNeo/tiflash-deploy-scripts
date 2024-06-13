@@ -8,18 +8,32 @@ terraform apply -auto-approve
 
 # 开发机
 
-export U=ubuntu@54.244.211.232
+export U=ubuntu@54.212.203.10
+
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.parallel.limiter.tar.gz $U:/home/ubuntu/tiflash.parallel.limiter.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.parallel.500.tar.gz $U:/home/ubuntu/tiflash.parallel.500.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter10.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter2.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter8.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter7.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter6.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.nopara.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz $U:/home/ubuntu/pd.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz $U:/home/ubuntu/tidb.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz $U:/home/ubuntu/tikv.tar.gz
 scp calvin@10.2.12.81:/data1/calvin/bin/br-cse $U:/home/ubuntu/br-cse
 
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.parallel.500.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.parallel.limiter.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.parallel.limiter2.tar.gz
+
 # 中控机
 # 需要先配置 ~/.ssh/authorized_keys
 
-tiup cluster deploy -y test v8.0.0 topology.yaml --native-ssh=1 --ignore-config-check
 tiup cluster destroy test -y
+
+# 必须 patch，否则是 tikv 的代码
 
 tiup cluster deploy -y test v8.0.0 topology.yaml --native-ssh=1 --ignore-config-check
 tiup cluster patch -y test tiflash.tar.gz --overwrite --offline -R tiflash
@@ -35,6 +49,23 @@ tiup ctl:v7.5.0 pd -u http://172.31.8.1:2379 config set replication.max-replicas
 tiup cluster start test 
 
 curl -X POST http://172.31.8.1:2379/pd/api/v2/keyspaces -H 'Content-Type: application/json' -d '{"name":"a"}'
+
+
+tiup cluster restart test -y
+
+tiup cluster patch -y test tiflash.tar.gz --overwrite --offline -R tiflash
+tiup cluster patch -y test tiflash.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.parallel.500.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.parallel.500.tar.gz --overwrite --offline -R tiflash
+tiup cluster patch -y test tiflash.parallel.limiter.tar.gz --overwrite --offline -R tiflash
+tiup cluster patch -y test tiflash.parallel.limiter2.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter10.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter2.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter8.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter7.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter6.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.nopara.tar.gz --overwrite -R tiflash
+
 
 # 天生两副本
 ./br-cse restore db --db=chbenchmark --s3.region=ap-northeast-2 --storage "s3://yunyantest/chbenmark-1500" --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a --leader-download=true
@@ -88,6 +119,9 @@ mysql --host 172.31.7.1 --port 4000 -u root -e "alter database test set tiflash 
 
 tiup cluster stop test -R tiflash -y
 tiup cluster start test -R tiflash -y
+
+tiup cluster restart test -R tiflash -y
+
 
 # 改变测试环境
 # 禁用 fap

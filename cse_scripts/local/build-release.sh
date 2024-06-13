@@ -32,6 +32,7 @@ cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_
 make tiflash -j40 && make install
 cd install_tiflash && rm -rf tiflash/bin
 tar -czvf tiflash.tar.gz ./tiflash
+cd ../../..
 
 tiup cluster stop calvin-cse-s3 -y -R tiflash
 tiup cluster patch -y calvin-cse-s3 /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz --overwrite --offline -R tiflash

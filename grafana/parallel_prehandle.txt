@@ -2,3 +2,18 @@
 sum(tiflash_system_current_metric_RaftNumPrehandlingSubTasks{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}) by (instance)
 # Serverless
 sum(tiflash_system_current_metric_RaftNumPrehandlingSubTasks{instance=~"$instance"}) by (instance)
+
+
+sum(tiflash_system_current_metric_RaftNumParallelPrehandlingTasks{instance=~"$instance"}) by (instance)
+sum(tiflash_system_current_metric_RaftNumSnapshotsPendingApply{instance=~"$instance"}) by (instance)
+
+
+sum(rate(tiflash_raft_raft_frequent_events_count{instance=~"$instance"}[1m])) by (type)
+sum(rate(tiflash_raft_raft_events_count{instance=~"$instance"}[1m])) by (type)
+
+histogram_quantile(0.99, sum(rate(tiflash_raft_command_duration_seconds_bucket{instance=~"$instance"}[1m])) by (le, type))
+{{type}}
+
+sum(delta(tiflash_raft_command_throughput_bucket{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type="prehandle_snapshot"}[1m])) by (le)
+
+Snapshot Prehandle Throughput Heatmap
