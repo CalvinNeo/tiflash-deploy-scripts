@@ -31,6 +31,7 @@ cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_
 make tiflash -j40 && make install
 cd install_tiflash && rm -rf tiflash/bin
 tar -czvf tiflash.tar.gz ./tiflash
+cd ../../..
 
 cd build/release
 cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash

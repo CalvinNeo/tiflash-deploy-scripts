@@ -1,0 +1,15 @@
+histogram_quantile(0.999, sum(round(1000000000*rate(tiflash_fap_task_duration_seconds_bucket{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m]))) by (le, type) / 1000000000)
+sum(rate(tiflash_fap_nomatch_reason{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m])) by (type)
+sum(rate(tiflash_fap_task_result{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m])) by (type)
+sum(rate(tiflash_fap_task_state{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m])) by (type)
+
+
+histogram_quantile(0.999, sum(round(1000000000*rate(tiflash_fap_task_duration_seconds_bucket{tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m]))) by (le, type) / 1000000000)
+sum(rate(tiflash_fap_nomatch_reason{tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m])) by (type)
+sum(rate(tiflash_fap_task_result{tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m])) by (type)
+sum(rate(tiflash_fap_task_state{tidb_cluster="$tidb_cluster", instance=~"$instance"}[1m])) by (type)
+
+sum(tiflash_fap_task_result{}) by (type)
+
+sum(tiflash_proxy_tikv_raftstore_region_count{instance=~"$instance", type="region"}) by (instance)
+histogram_quantile(0.99, sum(rate(tiflash_fap_task_duration_seconds_bucket{}[1m])) by (le, type))

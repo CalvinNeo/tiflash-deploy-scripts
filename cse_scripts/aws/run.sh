@@ -17,16 +17,51 @@ scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/i
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter8.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter7.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter6.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter5.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.limiter2_4.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.nopara.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.tar.gz
+scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.subtasklimiter.tar.gz
+
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz $U:/home/ubuntu/pd.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz $U:/home/ubuntu/tidb.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz $U:/home/ubuntu/tikv.tar.gz
 scp calvin@10.2.12.81:/data1/calvin/bin/br-cse $U:/home/ubuntu/br-cse
 
+
+scp $idc81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.tar.gz
+scp $idc81:/DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz $U:/home/ubuntu/pd.tar.gz
+scp $idc81:/DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz $U:/home/ubuntu/tidb.tar.gz
+scp $idc81:/DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz $U:/home/ubuntu/tikv.tar.gz
+scp $idc81:/data1/calvin/bin/br-cse $U:/home/ubuntu/br-cse
+
+
+# 已经登录
+scp /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.tar.gz
+scp /DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz $U:/home/ubuntu/pd.tar.gz
+scp /DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz $U:/home/ubuntu/tidb.tar.gz
+scp /DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz $U:/home/ubuntu/tikv.tar.gz
+scp /data1/calvin/bin/br-cse $U:/home/ubuntu/br-cse
+
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.parallel.500.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.parallel.limiter.tar.gz
 scp calvin@10.2.12.81:/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz $U:/home/ubuntu/tiflash.parallel.limiter2.tar.gz
+
+
+# 直接传到 S3
+aws s3 cp /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz s3://yunyantest/calvin/fap/tiflash.tar.gz
+aws s3 cp /DATA/disk1/calvin/tiflash/cse/tidb-cse/bin/tidb.tar.gz s3://yunyantest/calvin/fap/tidb.tar.gz
+aws s3 cp /DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz s3://yunyantest/calvin/fap/pd.tar.gz
+aws s3 cp /DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz s3://yunyantest/calvin/fap/tikv.tar.gz
+aws s3 cp /data1/calvin/bin/br-cse s3://yunyantest/calvin/fap/br-cse
+
+aws s3 cp s3://yunyantest/calvin/fap/tiflash.tar.gz tiflash.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/tidb.tar.gz tidb.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/pd.tar.gz pd.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/tikv.tar.gz tikv.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/br-cse br-cse
+
 
 # 中控机
 # 需要先配置 ~/.ssh/authorized_keys
@@ -65,6 +100,9 @@ tiup cluster patch -y test tiflash.limiter8.tar.gz --overwrite -R tiflash
 tiup cluster patch -y test tiflash.limiter7.tar.gz --overwrite -R tiflash
 tiup cluster patch -y test tiflash.limiter6.tar.gz --overwrite -R tiflash
 tiup cluster patch -y test tiflash.nopara.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter2_4.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.limiter.tar.gz --overwrite -R tiflash
+tiup cluster patch -y test tiflash.subtasklimiter.tar.gz --overwrite -R tiflash
 
 
 # 天生两副本

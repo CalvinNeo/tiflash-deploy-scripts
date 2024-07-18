@@ -1,5 +1,8 @@
 Number of Versioned Entries
 tiflash_system_asynchronous_metric_VersionedEntries{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}
+{{instance}}-versioned_entries
 
 Memory Usages By Classes
 tiflash_memory_usage_by_class{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}
+{{instance}}-{{type}}
+

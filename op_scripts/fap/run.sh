@@ -28,19 +28,19 @@ tiup br:v7.1.0 restore full --pd http://172.31.8.1:2379 \
   --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 \
   --merge-region-size-bytes=100663290 --merge-region-key-count=960001
 
+tiup br:v7.1.0 restore full --pd http://172.31.8.1:2379 --send-credentials-to-tikv=false --check-requirements=false --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 
+
 echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 0' | mysql \
   -u root --host 172.31.7.1 --port 4000
 
-echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 1' | mysql \
-  -u root --host 172.31.7.1 --port 4000
+echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 1' | mysql -u root --host 172.31.7.1 --port 4000
 
 tiup cluster restart test -R tiflash -y
 
-echo 'select * from information_schema.tiflash_replica' | mysql \
-  -u root --host 172.31.7.1 --port 4000
+echo 'select * from information_schema.tiflash_replica' | mysql -u root --host 172.31.7.1 --port 4000
 
-echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 2' | mysql \
--u root --host 172.31.7.1 --port 4000
+echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 2' | mysql -u root --host 172.31.7.1 --port 4000
+echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 1' | mysql -u root --host 172.31.7.1 --port 4000
 
 
 # 检查结果

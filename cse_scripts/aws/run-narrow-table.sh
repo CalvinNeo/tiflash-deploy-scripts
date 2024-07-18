@@ -1,11 +1,11 @@
 sudo apt remove needrestart
 sudo apt update
-sudo apt install lrzsz
-sudo apt install mysql-client-core-8.0
-sudo apt install build-essential
-sudo apt install pkg-config
-sudo apt install openssl
-sudo apt install libssl-dev
+sudo apt install lrzsz -y
+sudo apt install mysql-client-core-8.0 -y
+sudo apt install build-essential -y
+sudo apt install pkg-config -y
+sudo apt install openssl -y
+sudo apt install libssl-dev -y
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 . "$HOME/.cargo/env"

@@ -1,0 +1,35 @@
+sudo apt remove needrestart
+sudo apt update
+
+sudo apt purge bpfcc-tools libbpfcc python3-bpfcc
+wget https://github.com/iovisor/bcc/releases/download/v0.25.0/bcc-src-with-submodule.tar.gz
+tar xf bcc-src-with-submodule.tar.gz
+cd bcc/
+sudo apt install -y python-is-python3
+sudo apt install -y bison build-essential cmake flex git libedit-dev   libllvm11 llvm-11-dev libclang-11-dev zlib1g-dev libelf-dev libfl-dev python3-distutils
+sudo apt install -y checkinstall
+mkdir build
+cd build/
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DPYTHON_CMD=python3 ..
+make
+sudo checkinstall
+
+
+sudo apt purge bpfcc-tools libbpfcc python3-bpfcc
+wget https://github.com/iovisor/bcc/releases/download/v0.30.0/bcc-src-with-submodule.tar.gz
+tar xf bcc-src-with-submodule.tar.gz
+cd bcc/
+sudo apt install -y python-is-python3 zip lrzsz
+sudo apt install -y bison build-essential cmake flex git libedit-dev   libllvm11 llvm-11-dev libclang-11-dev zlib1g-dev libelf-dev libfl-dev python3-distutils
+sudo apt install -y checkinstall
+mkdir build
+cd build/
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DPYTHON_CMD=python3 ..
+make
+sudo checkinstall
+
+sudo /usr/share/bcc/tools/offcputime -K -p 14839 > 999
+sudo /usr/share/bcc/tools/offcputime -df -p `ps aux | grep tiflash | grep -v grep | awk '{print $2}'` 10 > qqq
+
+
+./FlameGraph/flamegraph.pl --color=io --title="Off-CPU Time Flame Graph" --countname=us < rrr2 > parallel6.svg

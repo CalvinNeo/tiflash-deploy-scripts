@@ -1,0 +1,40 @@
+kubectl exec -ti tc-tiflash-0 -c tiflash sh
+
+curl "127.0.0.1:20292/debug/pprof/heap_activate?interval=1"
+curl "127.0.0.1:20292/debug/pprof/heap_list"
+
+tar -czf tiflash.tar.gz tiflash/
+
+kubectl cp  -c serverlog tc-tiflash-0:/data0/proxy/he.gz he.gz
+
+kubectl cp  -c serverlog tc-tiflash-1:/data0/proxy/heap-3IT3OA/000002.heap 000002.heap
+
+kubectl cp  -c serverlog tc-tiflash-1:/data0/proxy/heap-3IT3OA/000044.heap 000044.heap
+
+
+kubectl cp  -c tiflash tc-tiflash-0:/tiflash.tar.gz test_tiflash.tar.gz
+kubectl cp  -c tiflash tc-tiflash-1:/tiflash.tar.gz test_tiflash.tar.gz
+
+
+kubectl exec -ti tc-tiflash-0 -c serverlog sh
+kubectl exec -ti tc-tiflash-1 -c serverlog sh
+
+
+jeprof -svg tiflash 000125.heap > tiflash.xx.svg
+
+
+jeprof -svg /tiflash/tiflash /data0/proxy/heap-Prh3rT/000125.heap > tiflash.xx.svg
+
+/DATA/disk1/calvin/jemalloc-5.2.1/bin/jeprof -svg /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/dbms/src/Server/tiflash --add_lib=/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so 000125.heap > tiflash.xx.svg
+
+/DATA/disk1/calvin/jemalloc-5.2.1/bin/jeprof -svg /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/dbms/src/Server/tiflash --add_lib=/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so 000002.heap > tiflash.xx.svg
+
+
+/DATA/disk1/calvin/jemalloc-5.2.1/bin/jeprof -svg /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/dbms/src/Server/tiflash --add_lib=/DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so 000044.heap > tiflash.xx.svg
+
+/DATA/disk1/calvin/jemalloc-5.2.1/bin/jeprof -svg /DATA/disk1/calvin/tiflash/test-infra/tools/tcctl/bin/tiflash/tiflash --add_lib=/DATA/disk1/calvin/tiflash/test-infra/tools/tcctl/bin/tiflash/libtiflash_proxy.so 000044.heap > tiflash.xx.svg
+
+/DATA/disk1/calvin/jemalloc-5.2.1/bin/jeprof -svg tiflash/tiflash --add_lib=tiflash/libtiflash_proxy.so --add_lib=tiflash/libgmssl.so --add_lib=tiflash/libc++.so.1 000044.heap > tiflash.xx.svg
+
+
+"enableProfiling": {"tiflash": true},  
