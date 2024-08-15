@@ -1,3 +1,6 @@
+# 首先先参考 run.sh
+
+
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt update
 sudo apt install python3.11
@@ -9,20 +12,58 @@ export PATH=$PATH:/home/ubuntu/.local/bin
 python3 -m pip install --upgrade pip
 # sudo update-alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1
 
+# 上面的方案似乎可能没有用，此时建议使用 anaconda
+curl -O https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Linux-x86_64.sh
+sh ./Anaconda3-2024.06-1-Linux-x86_64.sh
+
 pip install pymysql 
 
 git clone https://github.com/wd0517/VectorDBBench.git
+cd VectorDBBench
 pip install -e '.[test]'
 pip install -e '.[pinecone]'
 
 python3 -m vectordb_bench
 
+/home/ubuntu/anaconda3/bin/pip install environs
+python -m vectordb_bench
 
-# 修改安全组
+# 下载
+aws s3 cp s3://yunyantest/calvin/fap/tiflash3.tar.gz tiflash.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/tidb.tar.gz tidb.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/pd.tar.gz pd.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/tikv.tar.gz tikv.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/br-cse br-cse
+tiup cluster deploy -y test v8.0.0 topology.yaml --native-ssh=1 --ignore-config-check
+tiup cluster patch -y test tiflash.tar.gz --overwrite --offline -R tiflash
+tiup cluster patch -y test pd.tar.gz --overwrite --offline -R pd
+tiup cluster patch -y test tidb.tar.gz --overwrite --offline -R tidb
+tiup cluster patch -y test tikv.tar.gz --overwrite --offline -R tikv
+tiup cluster start test -R pd
+tiup cluster start test -R tikv
+tiup ctl:v7.5.0 pd -u http://172.31.8.1:2379 config set replication.max-replicas 1
+
+tiup cluster start test 
+
+# 修改安全组 入站规则
+# All traffic IPv4 0.0.0.0/0
+
+# 看下
+172.31.7.1
+Search Performance Test (1M Dataset, 768 Dim)
 
 
+# 这个备份似乎没有用
+./br-cse backup db --db=test --storage=s3://calvin-west-2/vector/5m --s3.region=us-west-2 --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a
 
-./br-cse backup db --db=narrow --storage=s3://calvin-west-2/vector/0.5m --s3.region=us-west-2 --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a
+alter database test set tiflash replica 2;
+alter database test set tiflash replica 0;
+
+select * from information_schema.tiflash_replica;
+
+172.31.7.1
+
+mysql --host 172.31.7.1 --port 4000 -u root
 
 select count(*) from test.vector_bench_test;
 
@@ -38,3 +79,18 @@ ssh 172.31.9.2 "sudo sed -i 's/enable-fast-add-peer = true/enable-fast-add-peer 
 
 ssh 172.31.9.1 "sudo sed -i 's/enable-fast-add-peer = false/enable-fast-add-peer = true/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
 ssh 172.31.9.2 "sudo sed -i 's/enable-fast-add-peer = false/enable-fast-add-peer = true/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
+
+ssh 172.31.9.1 "cat /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
+
+
+Vector Index
+sum by (type, instance) (tiflash_vector_index_active_instances{k8s_cluster="$k8s_cluster",tidb_cluster="$tidb_cluster",instance=~"$instance"})
+
+
+tiflash_vector_index_memory_usage{k8s_cluster="$k8s_cluster",tidb_cluster="$tidb_cluster",instance=~"$instance"}
+
+
+tiup ctl:nightly pd scheduler pause balance-region-scheduler 2000 -u 172.31.8.1:2379
+
+
+ drop table test.vector_bench_test;

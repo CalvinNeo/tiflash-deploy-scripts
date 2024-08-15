@@ -2,6 +2,16 @@ kubectl exec -ti tc-tiflash-0 -c tiflash sh
 
 curl "127.0.0.1:20292/debug/pprof/heap_activate?interval=1"
 curl "127.0.0.1:20292/debug/pprof/heap_list"
+curl "127.0.0.1:20292/debug/pprof/heap_deactivate"
+
+
+curl "127.0.0.1:5765/debug/pprof/heap_activate?interval=1"
+curl "127.0.0.1:5765/debug/pprof/heap_list"
+curl "127.0.0.1:5765/debug/pprof/heap"
+curl "127.0.0.1:5765/debug/pprof/heap_deactivate"
+
+curl "127.0.0.1:5765/debug/pprof/debug/pprof/profile?seconds=1&frequency=99"
+
 
 tar -czf tiflash.tar.gz tiflash/
 
@@ -38,3 +48,22 @@ jeprof -svg /tiflash/tiflash /data0/proxy/heap-Prh3rT/000125.heap > tiflash.xx.s
 
 
 "enableProfiling": {"tiflash": true},  
+
+./configure --enable-prof
+cargo build --package raftstore-proxy-main --features="$ENABLE_FEATURES"  --features=jemalloc --features=mem-profiling
+
+export MALLOC_CONF="prof:true,prof_active:true"
+
+
+export MALLOC_CONF="prof:true,prof_active:false"
+LD_PRELOAD=jemalloc-5.2.1/lib/libjemalloc.so.2 
+LD_PRELOAD=jemalloc-5.2.1/lib/libjemalloc.so.2 ./target/debug/raftstore_proxy_main
+
+LD_PRELOAD=jemalloc-5.2.1/lib/libjemalloc.so.2 MALLOC_CONF="prof:true,prof_active:false" LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib cargo test --package proxy_tests --features="$ENABLE_FEATURES" --test proxy shared::jemalloc_prof --features="mem-profiling" --features="jemalloc"
+
+cargo build --package raftstore-proxy-main --features="$ENABLE_FEATURES"  --features=jemalloc --features=mem-profiling
+
+LD_PRELOAD=/usr/local/lib/libjemalloc.so.2 ./target/debug/raftstore_proxy_main
+
+
+perl /data3/calvin_81/disk1/tiflash/tics4/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in  --show_bytes /mnt/disks/9376db83-445a-410d-987b-6460236b65cf/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash /tmp/abce --svg

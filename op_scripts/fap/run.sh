@@ -23,15 +23,12 @@ cd ../.devcontainer
 tiup cluster start test
 python s.py
 tiup cluster patch test tiflash-cloud-native-linux-amd64.tar.gz -R tiflash -y
-tiup br:v7.1.0 restore full --pd http://172.31.8.1:2379 \
-  --send-credentials-to-tikv=false --check-requirements=false \
-  --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 \
-  --merge-region-size-bytes=100663290 --merge-region-key-count=960001
+tiup br:v7.1.0 restore full --pd http://172.31.8.1:2379 --send-credentials-to-tikv=false --check-requirements=false --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 --merge-region-size-bytes=100663290 --merge-region-key-count=960001
 
 tiup br:v7.1.0 restore full --pd http://172.31.8.1:2379 --send-credentials-to-tikv=false --check-requirements=false --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 
 
-echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 0' | mysql \
-  -u root --host 172.31.7.1 --port 4000
+echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 0' | mysql  -u root --host 172.31.7.1 --port 4000
+
 
 echo 'ALTER DATABASE tpcc SET TIFLASH REPLICA 1' | mysql -u root --host 172.31.7.1 --port 4000
 
@@ -62,6 +59,12 @@ sudo chmod 777 /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
 sudo sed -i 's/enable-fast-add-peer = true/enable-fast-add-peer = false/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
 
 sudo sed -i 's/enable-fast-add-peer = false/enable-fast-add-peer = true/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml
+
+ssh 172.31.9.1 "sudo sed -i 's/enable-fast-add-peer = true/enable-fast-add-peer = false/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
+ssh 172.31.9.2 "sudo sed -i 's/enable-fast-add-peer = true/enable-fast-add-peer = false/' /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
+
+
+ssh 172.31.9.1 "cat /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
 
 
 sudo chmod 777 /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml

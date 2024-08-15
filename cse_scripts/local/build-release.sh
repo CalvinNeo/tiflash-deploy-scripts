@@ -32,11 +32,25 @@ git submodule update --init --recursive
 
 mkdir -p build/release
 cd build/release
-cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash
+cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DENABLE_TESTS=true -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash
 make tiflash -j40 && make install
 cd install_tiflash && rm -rf tiflash/bin
 tar -czvf tiflash.tar.gz ./tiflash
 cd ../../..
+
+
+cmake .. -GNinja --fresh \
+    -DCMAKE_BUILD_TYPE=RELWITHDEBINFO \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DENABLE_TESTING=OFF \
+    -DENABLE_TESTS=OFF \
+    -DENABLE_FAILPOINTS=OFF
+
+cmake --build . --target tiflash --parallel 40
+rm -rf artifacts
+cmake --install . --component=tiflash-release --prefix=artifacts
+
 
 tiup cluster stop calvin-cse-s3 -y -R tiflash
 tiup cluster patch -y calvin-cse-s3 /DATA/disk1/calvin/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz --overwrite --offline -R tiflash
