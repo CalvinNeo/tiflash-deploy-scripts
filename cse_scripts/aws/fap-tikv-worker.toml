@@ -1,0 +1,5 @@
+[dfs]
+prefix = "local-cluster"
+s3-endpoint = "http://s3.us-west-2.amazonaws.com"
+s3-bucket = calvin-cloud-fc433710-tiflash
+s3-region = "us-west-2"

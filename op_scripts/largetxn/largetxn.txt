@@ -1,0 +1,19 @@
+SHOW VARIABLES LIKE 'tidb_dml_type';
+SET tidb_dml_type = 'bulk';
+
+tiup br:v8.1.0 restore full --pd http://172.31.8.1:2379 --send-credentials-to-tikv=false --check-requirements=false --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 
+
+
+tiup cluster deploy -y test nightly topology.yaml 
+tiup cluster start test
+
+mysql --host 172.31.7.1 --port 4000 -uroot
+
+use tpcc;
+alter database tpcc set tiflash replica 1;
+create table tpcc.orders2 like tpcc.orders;
+select * from information_schema.tiflash_replica;
+
+insert into tpcc.orders2 select * from tpcc.orders;
+
+mysql --host 172.31.7.1 --port 4000 -u root --comments -e "select /*+read_from_storage(tiflash[tpcc.orders2])*/ count(*) from tpcc.orders2;"

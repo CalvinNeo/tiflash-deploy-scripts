@@ -1,0 +1,121 @@
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/tidb-deploy"
+
+server_configs:
+  pd:
+    replication.enable-placement-rules: true
+    replication.location-labels: ["host"]
+    replication.max-replica: 1
+    keyspace.pre-alloc: ["a"]
+    schedule.merge-schedule-limit: 0
+    schedule.low-space-ration: 1.0
+    schedule.replica-schedule-limit: 500
+#    schedule.split-merge-interval: "5s"
+#    schedule.max-merge-region-size: 200
+#    schedule.max-merge-region-keys: 2000000
+  tikv:
+    enable-inner-key-offset: true
+    storage.enable-ttl: true
+    storage.api-version: 2
+    dfs.prefix:  "local-cluster"
+    dfs.s3-endpoint:  http://s3.us-west-2.amazonaws.com
+    dfs.s3-bucket:  calvin-cloud-fc433710-tiflash
+    dfs.s3-region:  "us-west-2"
+    security.master-key.vendor: "test"
+#    coprocessor.region-split-keys: 2000000
+#    coprocessor.region-split-size: "200MiB"
+#    rfstore.region-split-keys: 2000000
+#    rfstore.region-split-size: "200MiB"
+  tidb:
+    disaggregated-tiflash: true
+    keyspace-name: "b"
+    enable-telemetry: false
+    ratelimit.full-speed: 1048576000
+    ratelimit.full-speed-capacity: 1048576000
+    ratelimit.low-speed-watermark: 1048576000000
+    ratelimit.block-write-watermark: 1048576000000
+    log.level: "info"
+    optracing.enable: true
+    security.enable-sem: false
+    tiflash-replicas.constraints: [{"key": "engine", "op": "in", "values": ["tiflash"]}, {"key": "engine_role", "op": "in", "values": ["write"]}]
+    tiflash-replicas.group-id: "enable_s3_wn_region"
+    tiflash-replicas.extra-s3-rule: false
+    tiflash-replicas.min-count: 1
+  tiflash:
+    flash.use_autoscaler: false
+    storage.s3.endpoint: http://s3.us-west-2.amazonaws.com
+    storage.s3.bucket: calvin-cloud-fc433710-tiflash
+    storage.s3.root: /tiflash-cs3/
+    storage.api_version: 2
+
+pd_servers:
+  - host: 172.31.8.1
+
+
+tidb_servers:
+  - host: 172.31.7.1
+  - host: 172.31.7.2
+
+tikv_servers:
+  - host: 172.31.6.1
+    config:
+      server.labels: { host: "tikv0" }
+  - host: 172.31.6.2
+    config:
+      server.labels: { host: "tikv1" }
+  - host: 172.31.6.3
+    config:
+      server.labels: { host: "tikv2" }
+
+tiflash_servers:
+  - host: 172.31.9.1
+    config:
+      flash.disaggregated_mode: tiflash_write
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+      profiles.default.remote_checkpoint_only_upload_manifest: false
+      profiles.default.fap_handle_concurrency: 30
+      profiles.default.fap_task_timeout_seconds: 120
+    learner_config:
+#      raftstore.snap-handle-pool-size: 2
+      log-level: debug
+      security.master-key.vendor: "test"
+      dfs.prefix: "local-cluster"
+      dfs.s3-endpoint: "http://s3.us-west-2.amazonaws.com"
+      dfs.s3-bucket: calvin-cloud-fc433710-tiflash
+      dfs.s3-region:  "us-west-2"
+      storage.api-version: 2
+      storage.enable-ttl: true
+      engine-store.enable-fast-add-peer: false
+  - host: 172.31.9.2
+    config:
+      flash.disaggregated_mode: tiflash_write
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+      profiles.default.remote_checkpoint_only_upload_manifest: false
+      profiles.default.fap_handle_concurrency: 30
+      profiles.default.fap_task_timeout_seconds: 120
+    learner_config:
+#      raftstore.snap-handle-pool-size: 2
+      log-level: debug
+      dfs.prefix: "local-cluster"
+      security.master-key.vendor: "test"
+      dfs.s3-endpoint: "http://s3.us-west-2.amazonaws.com"
+      dfs.s3-bucket: calvin-cloud-fc433710-tiflash
+      dfs.s3-region:  "us-west-2"
+      storage.api-version: 2
+      storage.enable-ttl: true
+      engine-store.enable-fast-add-peer: false
+  - host: 172.31.10.1
+    config:
+      delta_index_cache_size: 2000
+      flash.disaggregated_mode: tiflash_compute
+      storage.remote.cache.dir: /tidb-deploy/tiflash-9000/remote_cache
+      storage.remote.cache.capacity: 100000000000
+      storage.main.dir: ["/tidb-deploy/tiflash-9000/data"]
+
+grafana_servers:
+  - host: 172.31.8.1
+
+monitoring_servers:
+  - host: 172.31.8.1

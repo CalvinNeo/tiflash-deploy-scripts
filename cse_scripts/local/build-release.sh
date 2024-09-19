@@ -1,7 +1,9 @@
+git config --global --add url."git@github.com:".insteadOf "https://github.com/"
+
 git clone git@github.com:tidbcloud/pd-cse.git
 cd pd-cse
 git fetch origin release-7.1-keyspace
-git checkout -b release-7.1-keyspace remotes/origin/release-7.1-keyspace
+git checkout remotes/origin/release-7.1-keyspace
 go get go@1.21.0
 make build
 cd bin
@@ -11,6 +13,7 @@ git clone git@github.com:tidbcloud/tidb-cse.git
 cd tidb-cse
 git fetch origin release-7.1-keyspace
 git checkout -b release-7.1-keyspace remotes/origin/release-7.1-keyspace
+export GIT_TERMINAL_PROMPT=1
 go get go@1.21.0
 export MIN_TIKV_VERSION=6.1.0 && export REGISTER_METRICS_INIT=false && make server
 cd bin
@@ -19,7 +22,7 @@ tar -czvf tidb.tar.gz tidb-server
 git clone git@github.com:tidbcloud/cloud-storage-engine
 cd cloud-storage-engine
 git fetch origin cloud-engine
-git checkout -b cloud-engine remotes/origin/cloud-engine
+git checkout remotes/origin/cloud-engine
 make release
 cd target/release/ && tar -czvf tikv.tar.gz tikv-server
 cd ../../..
@@ -32,7 +35,7 @@ git submodule update --init --recursive
 
 mkdir -p build/release
 cd build/release
-cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DENABLE_TESTS=true -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash
+cmake ../.. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DENABLE_TESTS=true  -DCMAKE_PREFIX_PATH=/DATA/disk1/ra_common/tiflash-env-17/sysroot -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=./install_tiflash/tiflash
 make tiflash -j40 && make install
 cd install_tiflash && rm -rf tiflash/bin
 tar -czvf tiflash.tar.gz ./tiflash

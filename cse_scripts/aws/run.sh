@@ -43,7 +43,12 @@ aws s3 cp /DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tik
 aws s3 cp /data1/calvin/bin/br-cse s3://yunyantest/calvin/fap/br-cse
 
 # 后续版本
-aws s3 cp /data3/calvin_81/disk1/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz s3://yunyantest/calvin/fap/tiflash4.tar.gz
+aws s3 cp /data3/calvin_81/disk1/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz s3://yunyantest/calvin/fap/tiflash14.tar.gz
+aws s3 cp /data3/calvin_81/disk1/tiflash/cse/tidb-cse/bin/tidb.tar.gz s3://yunyantest/calvin/fap/tidb2.tar.gz
+aws s3 cp /data3/calvin_81/disk1/tiflash/cse/pd-cse/bin/pd.tar.gz s3://yunyantest/calvin/fap/pd3.tar.gz
+aws s3 cp /data3/calvin_81/disk1/tiflash/cse/pd-cse/bin/pd-ctl s3://yunyantest/calvin/fap/pd-ctl2
+aws s3 cp /data3/calvin_81/disk1/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz s3://yunyantest/calvin/fap/tikv3.tar.gz
+aws s3 cp /data3/calvin_81/disk1/tiflash/cse/cloud-storage-engine/target/release/tikv-worker s3://yunyantest/calvin/fap/tikv-worker
 
 
 # 从 S3 下载
@@ -52,9 +57,19 @@ aws s3 cp s3://yunyantest/calvin/fap/tidb.tar.gz tidb.tar.gz
 aws s3 cp s3://yunyantest/calvin/fap/pd.tar.gz pd.tar.gz
 aws s3 cp s3://yunyantest/calvin/fap/tikv.tar.gz tikv.tar.gz
 aws s3 cp s3://yunyantest/calvin/fap/br-cse br-cse
+aws s3 cp s3://yunyantest/calvin/fap/tikv-worker tikv-worker
+scp tikv-worker 172.31.6.1:~/tikv-worker
+
+nohup ./tikv-worker -C tikv-worker.toml --pd-endpoints 172.31.8.1:2379 &
 
 # 后续版本
-aws s3 cp s3://yunyantest/calvin/fap/tiflash4.tar.gz tiflash.tar.gz
+rm tiflash.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/tiflash14.tar.gz tiflash.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/tidb2.tar.gz tidb.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/pd3.tar.gz pd.tar.gz
+aws s3 cp s3://yunyantest/calvin/fap/pd-ctl2 pd-ctl
+aws s3 cp s3://yunyantest/calvin/fap/tikv3.tar.gz tikv.tar.gz
+chmod 777 pd-ctl
 tiup cluster patch -y test tiflash.tar.gz --overwrite -R tiflash
 
 
@@ -74,8 +89,11 @@ tiup cluster patch -y test tikv.tar.gz --overwrite --offline -R tikv
 
 tiup cluster start test -R pd
 tiup cluster start test -R tikv
+curl -H "Content-Type: application/json" -d '{"name":"b", "config":{"encryption":"{\"enabled\":true}"}}' http://172.31.8.1:2379/pd/api/v2/keyspaces
+# ./pd-ctl -u 172.31.8.1:2379 keyspace create b --config encryption="{'enabled': true}"
 tiup ctl:v7.5.0 pd -u http://172.31.8.1:2379 config set replication.max-replicas 1
 
+tiup cluster start test -R tidb
 tiup cluster start test 
 
 curl -X POST http://172.31.8.1:2379/pd/api/v2/keyspaces -H 'Content-Type: application/json' -d '{"name":"a"}'
