@@ -1,0 +1,33 @@
+
+sudo scp dbms/src/Server/tiflash  root@10.2.12.79:/DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/tiflash
+sudo scp contrib/tiflash-proxy-cmake/debug/libtiflash_proxy.so   root@10.2.12.79:/DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libtiflash_proxy.so
+sudo scp contrib/GmSSL/lib/libgmssld.so.3 root@10.2.12.79:/DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libgmssld.so.3
+
+DEBUG @ 79, 81
+
+sudo cp dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash
+sudo cp contrib/tiflash-proxy-cmake/debug/libtiflash_proxy.so   /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so
+sudo cp contrib/GmSSL/lib/libgmssld.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssld.so.3
+
+RELEASE @ 79, 81
+sudo cp dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash
+sudo cp contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so   /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so
+sudo cp contrib/GmSSL/lib/libgmssl.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssl.so.3
+
+sudo scp bin/pd-server /DATA/disk4/luorongzhen/tidb-deploy/pd-5701/bin/pd-server
+
+
+cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DENABLE_TESTS=ON -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -GNinja ..
+
+
+DEBUG @ 79, 81 @ 2
+
+sudo cp dbms/src/Server/tiflash /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/tiflash
+sudo cp contrib/tiflash-proxy-cmake/debug/libtiflash_proxy.so   /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libtiflash_proxy.so
+sudo cp contrib/GmSSL/lib/libgmssld.so.3 /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libgmssld.so.3
+
+
+sudo cp dbms/src/Server/tiflash /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/tiflash
+sudo cp contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so   /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libtiflash_proxy.so
+sudo cp contrib/GmSSL/lib/libgmssl.so.3 /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libgmssl.so.3
+sudo cp contrib/GmSSL/lib/libgmssl.so.3 /DATA/disk4/luorongzhen/tidb-deploy/tiflash-5861/bin/tiflash/libgmssl.so.3

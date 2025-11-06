@@ -13,3 +13,7 @@
 ./go-tpc tpcc --warehouses 200 prepare -T 30 -H 172.31.7.1 -P 4000
 
 mysql --host 172.31.7.1 --port 4000 -u root -e "alter database tpcc set tiflash replica 2;"
+
+
+
+go-tpc tpch --sf 1 --analyze --tiflash-replica 1 prepare -H 127.0.0.1  -P 45977

@@ -83,14 +83,15 @@ ssh 172.31.9.2 "sudo sed -i 's/enable-fast-add-peer = false/enable-fast-add-peer
 ssh 172.31.9.1 "cat /tidb-deploy/tiflash-9000/conf/tiflash-learner.toml"
 
 
-Vector Index
-sum by (type, instance) (tiflash_vector_index_active_instances{k8s_cluster="$k8s_cluster",tidb_cluster="$tidb_cluster",instance=~"$instance"})
-
-
-tiflash_vector_index_memory_usage{k8s_cluster="$k8s_cluster",tidb_cluster="$tidb_cluster",instance=~"$instance"}
-
 
 tiup ctl:nightly pd scheduler pause balance-region-scheduler 2000 -u 172.31.8.1:2379
 
 
  drop table test.vector_bench_test;
+
+
+ select /*+read_from_storage(tiflash[test.vector_bench_test])*/ count(*) from test.vector_bench_test;
+ select /*+read_from_storage(tikv[test.vector_bench_test])*/ count(*) from test.vector_bench_test;
+
+ select count(*) from test.vector_bench_test;
+

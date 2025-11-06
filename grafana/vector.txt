@@ -1,0 +1,12 @@
+sum by (type, instance) (tiflash_vector_index_active_instances{k8s_cluster="$k8s_cluster",tidb_cluster="$tidb_cluster",instance=~"$instance"})
+
+// tiflash_vector_index_duration
+histogram_quantile(0.999, sum(rate(tiflash_vector_index_duration_bucket{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type="build"}[1m])) by (le, type))
+sum(rate(tiflash_vector_index_duration_bucket{instance=~"$instance", type="build"}[1m])) by (le, type)
+
+tiflash_vector_index_duration_count{instance=~"$instance", type="build"}
+
+tiflash_vector_index_build_count{instance=~"$instance"}
+
+
+tiflash_vector_index_memory_usage{k8s_cluster="$k8s_cluster",tidb_cluster="$tidb_cluster",instance=~"$instance"}

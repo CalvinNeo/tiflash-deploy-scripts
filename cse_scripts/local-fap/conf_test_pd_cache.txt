@@ -1,0 +1,7 @@
+[coprocessor]
+region-split-keys = 10000
+region-split-size = "100MiB"
+
+[rfstore]
+region-split-keys = 10000
+region-split-size = "100MiB"

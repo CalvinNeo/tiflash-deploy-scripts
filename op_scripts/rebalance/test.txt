@@ -1,0 +1,56 @@
+
+
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+tiup br:v8.4.0 restore db --db test  -s s3://benchmark/guojiangtao/tpch50_def_v620_with_tiflash \
+  --s3.endpoint http://minio.pingcap.net:9000 --send-credentials-to-tikv=true \
+  --merge-region-size-bytes=100663290 --merge-region-key-count=960001 \
+  --pd 10.2.12.79:8701
+
+mysql --host 10.2.12.79 --port 8711 -uroot
+
+
+sudo cp /data3/calvin_81/disk1/tiflash/pd/bin/pd-server /data4/luorongzhen/tidb-deploy-tikv3/pd-8701/bin/pd-server
+
+tcst calvin-2 && make && sudo cp /data3/calvin_81/disk1/tiflash/pd/bin/pd-server /data4/luorongzhen/tidb-deploy-tikv3/pd-8701/bin/pd-server && tcs calvin-2
+
+tiup cluster clean --log -y calvin-2 && make && sudo cp /data3/calvin_81/disk1/tiflash/pd/bin/pd-server /data4/luorongzhen/tidb-deploy-tikv3/pd-8701/bin/pd-server && tcs calvin-2
+
+tiup ctl:v8.4.0 pd -u http://10.2.12.79:8701 store limit
+
+-- 普通表
+select TABLE_ID, p.STORE_ID, ADDRESS, count(p.REGION_ID) from information_schema.tikv_region_status r, information_schema.tikv_region_peers p, information_schema.tikv_store_status s where r.db_name = 'test' and r.table_name = 'orders' and r.region_id = p.region_id and p.store_id = s.store_id and json_extract(s.label, "$[0].value") = "tiflash" group by TABLE_ID, p.STORE_ID, ADDRESS;
+
+select r.region_id, s.store_id from information_schema.tikv_region_status r, information_schema.tikv_store_status s where r.db_name = 'test' and r.table_name = 'orders' and json_extract(s.label, "$[0].value") = "tiflash";
+
+export FROM=263
+mysql --host 10.2.12.79 --port 8711 -uroot -B -e 'select r.region_id, s.store_id from information_schema.tikv_region_status r, information_schema.tikv_store_status s where r.db_name = "test" and r.table_name = "orders" and json_extract(s.label, "$[0].value") = "tiflash";' | sed "1d" | awk -v FROM=$FROM '$2 != FROM {print}' | awk 'BEGIN { FROM = ENVIRON["FROM"] } {print "tiup ctl:v7.1.1 pd -u 10.2.12.79:8701 operator add transfer-peer " $1, FROM, $2 }'
+
+
+-- 分区表
+select TABLE_ID, p.STORE_ID, ADDRESS, count(p.REGION_ID)
+from information_schema.tikv_region_status r, information_schema.tikv_region_peers p, information_schema.tikv_store_status s
+where r.db_name = 'test' and r.table_name = 'table_to_check'
+and r.partition_name like 'p202312%'
+and r.region_id = p.region_id and p.store_id = s.store_id and json_extract(s.label, "$[0].value") = "tiflash"
+group by TABLE_ID, p.STORE_ID, ADDRESS;
+
+curl 10.2.12.79:8701/pd/api/v1/regions/balance
+
+curl -XPOST 10.2.12.79:8701/pd/api/v1/regions/balance
+
+curl -XPOST  -d "start_key=t\200\000\000\000\000\000\000\377x_r\000\000\000\000\000\372&end_key=t\200\000\000\000\000\000\000\377x_r\377\377\377\377\377\377\377\377\377\000\000\000\000\000\373" "10.2.12.79:8701/pd/api/v1/regions/balance"
+
+curl -XPOST -H "Content-Type: application/json" -d '{"start_key":"t\200\000\000\000\000\000\000\377x_r\000\000\000\000\000\372", "end_key":"t\200\000\000\000\000\000\000\377x_r\377\377\377\377\377\377\377\377\377\000\000\000\000\000\373"}' "10.2.12.79:8701/pd/api/v1/regions/balance"
+
+curl -XPOST -H "Content-Type: application/json" -d '{"start_key":"t\\200\\000\\000\\000\\000\\000\\000\\377x_r\\000\\000\\000\\000\\000\\372", "end_key":"t\\200\\000\\000\\000\\000\\000\\000\\377x_r\\377\\377\\377\\377\\377\\377\\377\\377\\377\\000\\000\\000\\000\\000\\373"}' "10.2.12.79:8701/pd/api/v1/regions/balance"
+
+curl -XPOST -H "Content-Type: application/json" -d '{"start_key":"7480000000000000FF7E5F720000000000FA", "end_key":"7480000000000000FF7E5F72FFFFFFFFFFFFFFFFFF0000000000FB", "required_labels":[{"key":"engine","value":"tiflash"}], "timeout": 1000000}' "10.2.12.79:8701/pd/api/v1/regions/balance"
+
+
+
+SELECT MIN(START_KEY) AS START_KEY, MAX(END_KEY) AS END_KEY FROM information_schema.tikv_region_status WHERE db_name = 'test' AND table_name = 'orders';
+
+curl -XDELETE "10.2.12.79:8701/pd/api/v1/schedulers/balance-keyrange-scheduler"
+
+sudo cat pd.log | grep  -A 10 "\!\!"
+

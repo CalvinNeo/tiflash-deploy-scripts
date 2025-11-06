@@ -23,8 +23,14 @@ mysql --host 172.31.7.1 --port 4000 -u root -e "INSERT INTO narrow.t2 (SELECT * 
 
 
 
+
 ./pressure/pressure/target/release/pressure free-issue --tidb-addrs mysql://root@172.31.7.1:4000/,mysql://root@172.31.7.2:4000/ --batch-size 10 --workers 10  --tasks 200
 ./pressure/pressure/target/release/pressure free-issue --tidb-addrs mysql://root@172.31.7.1:4000/,mysql://root@172.31.7.2:4000/ --batch-size 10 --workers 10  --tasks 400
+
+
+./pressure/pressure/target/release/pressure free-issue --tidb-addrs mysql://root@10.2.12.79:5711/ --batch-size 10 --workers 10  --tasks 200
+mysql --host 10.2.12.79 --port 5711 -u root -e "select /*+ read_from_storage(tikv[narrow.t]) */ count(*) from narrow.t;"
+
 
 
 mysql --host 172.31.7.1 --port 4000 -u root -e "ALTER TABLE narrow.t SET TIFLASH REPLICA 1;"
@@ -48,6 +54,8 @@ mysql --host 172.31.7.1 --port 4000 -u root -e "select * from information_schema
 # br 弄不动
 ./br-cse restore db --db=narrow --storage=s3://calvin-west-2/table/narrow-bigint-2.6b --s3.region=us-west-2 --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a --leader-download=true
 ./br-cse restore db --db=narrow --storage=s3://calvin-west-2/table/narrow-bigint-3b-rep0 --s3.region=us-west-2 --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a --leader-download=true
+
+
 
 
 mysql --host 172.31.7.1 --port 4000 -u root -e "ALTER TABLE narrow.t SET TIFLASH REPLICA 0;"

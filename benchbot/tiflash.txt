@@ -1,0 +1,9 @@
+python3 main.py gen-benchbot-case --email "xxx@pingcap.cn" --token 'xxx' --testbed_size "2xl" --bench_type ch  --arch arm64 --duration=10m --threads 60 --tiflash_replicas=2 --versions 'nightly' --dry_run --staging=True
+
+```
+        env:
+          MALLOC_CONF: "prof:true,prof_active:true"
+```
+
+
+python3 main.py gen-benchbot-case --email "xxx@pingcap.cn" --token 'xxx' --testbed_size "2xl" --bench_type tcph  --arch arm64 --duration=10m --threads 60 --tiflash_replicas=2 --versions 'nightly' --dry-run

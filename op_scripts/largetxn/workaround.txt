@@ -1,0 +1,55 @@
+mysql --host 10.2.12.79 --port 5711 --user root --comments
+
+
+create table test.t (z int);
+alter table test.t set tiflash replica 1;
+
+insert into test.t values (1);
+insert into test.t values (2);
+insert into test.t values (3);
+insert into test.t values (4);
+
+SELECT MIN(START_KEY) AS START_KEY, MAX(END_KEY) AS END_KEY FROM information_schema.tikv_region_status WHERE db_name = 'test' AND table_name = 't';
+
+
+SHOW TABLE test.t REGIONS;
+
+
+
+export HOST=10.2.12.79
+export PORT=5711
+export USER=root
+export SCHEMA_NAME=test
+export TABLE_NAME=orders_copy
+export TIFLASH_PATH=/data4/luorongzhen/tidb-data/tiflash-5761
+export STORE_ID=130
+export PD_ADDR=10.2.12.79:5701
+
+mysql --host $HOST --port $PORT --user root --comments -B -e "use information_schema; select region_id,table_id,is_index,is_partition from TIKV_REGION_STATUS where table_id=;"
+
+
+
+SELECT s.table_id, s.region_id FROM information_schema.tables t, TIKV_REGION_STATUS s WHERE t.TABLE_SCHEMA = $SCHEMA_NAME AND t.TABLE_NAME = $TABLE_NAME AND t.TIDB_TABLE_ID = s.table_id;
+
+tiup ctl:v8.4.0 pd -u 10.2.12.79:5701 store | jq '.stores[] | select(.store.labels[] | .key == "engine" and .value == "tiflash") | {store_id: .store.id, state: .store.state_name, address: .store.address}'
+
+
+tiup ctl:v8.4.0 pd -u 10.2.12.79:5701 config placement-rules show tiflash
+
+
+curl 10.2.12.79:5701/pd/api/v1/rule/tiflash/{id}
+
+curl 10.2.12.79:5701/pd/api/v1/rule/tiflash/
+
+curl http://10.2.12.79:5701/pd/api/v1/config/rules
+
+
+SELECT t.tidb_table_id FROM information_schema.tables t WHERE t.TABLE_SCHEMA = 'test' AND t.TABLE_NAME = 'orders_copy';
+
+
+select TIDB_PARTITION_ID from information_schema.PARTITIONS;
+
+create table test.par(a int) partition by range (a) (partition p0 values less than (10), PARTITION p1 VALUES LESS THAN (20));
+
+
+mysql --host $HOST --port $PORT --user root --comments -e "alter table $SCHEMA_NAME.$TABLE_NAME set tiflash replica 0;"

@@ -1,0 +1,1 @@
+rm ~/.tiup/storage/cluster/packages/tiflash-nightly-linux-amd64.tar.gz

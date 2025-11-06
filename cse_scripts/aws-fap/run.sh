@@ -42,7 +42,7 @@ aws s3 cp /DATA/disk1/calvin/tiflash/cse/pd-cse/bin/pd.tar.gz s3://yunyantest/ca
 aws s3 cp /DATA/disk1/calvin/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz s3://yunyantest/calvin/fap/tikv.tar.gz
 aws s3 cp /data1/calvin/bin/br-cse s3://yunyantest/calvin/fap/br-cse
 
-# 后续版本
+# 后续版本 2024
 aws s3 cp /data3/calvin_81/disk1/tiflash/cse/tiflash-cse/build/release/install_tiflash/tiflash.tar.gz s3://yunyantest/calvin/fap/tiflash14.tar.gz
 aws s3 cp /data3/calvin_81/disk1/tiflash/cse/tidb-cse/bin/tidb.tar.gz s3://yunyantest/calvin/fap/tidb2.tar.gz
 aws s3 cp /data3/calvin_81/disk1/tiflash/cse/pd-cse/bin/pd.tar.gz s3://yunyantest/calvin/fap/pd3.tar.gz
@@ -50,6 +50,16 @@ aws s3 cp /data3/calvin_81/disk1/tiflash/cse/pd-cse/bin/pd-ctl s3://yunyantest/c
 aws s3 cp /data3/calvin_81/disk1/tiflash/cse/cloud-storage-engine/target/release/tikv.tar.gz s3://yunyantest/calvin/fap/tikv3.tar.gz
 aws s3 cp /data3/calvin_81/disk1/tiflash/cse/cloud-storage-engine/target/release/tikv-worker s3://yunyantest/calvin/fap/tikv-worker
 
+
+# 后续版本 2025
+aws s3 cp ./tiflash-cse/build/release/install_tiflash/tiflash.tar.gz s3://yunyantest/calvin/fap/tiflash14.tar.gz
+aws s3 cp ./tidb-cse/bin/tidb.tar.gz s3://yunyantest/calvin/fap/tidb2.tar.gz
+aws s3 cp ./pd-cse/bin/pd.tar.gz s3://yunyantest/calvin/fap/pd202501.tar.gz
+aws s3 cp ./pd-cse/bin/pd.tar.gz s3://yunyantest/calvin/fap/pd202502.tar.gz
+
+aws s3 cp ./pd-cse/bin/pd-ctl s3://yunyantest/calvin/fap/pd-ctl2
+aws s3 cp ./cloud-storage-engine/target/release/tikv.tar.gz s3://yunyantest/calvin/fap/tikv3.tar.gz
+aws s3 cp ./cloud-storage-engine/target/release/tikv-worker s3://yunyantest/calvin/fap/tikv-worker
 
 # 从 S3 下载
 aws s3 cp s3://yunyantest/calvin/fap/tiflash.tar.gz tiflash.tar.gz
@@ -106,6 +116,9 @@ tiup cluster patch -y test tiflash.tar.gz --overwrite -R tiflash
 tiup cluster patch -y test tiflash.parallel.500.tar.gz --overwrite -R tiflash
 
 
+tiup cluster patch -y test pd2.tar.gz --overwrite --offline -R pd
+
+
 # 天生两副本
 ./br-cse restore db --db=chbenchmark --s3.region=ap-northeast-2 --storage "s3://yunyantest/chbenmark-1500" --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a --leader-download=true
 
@@ -113,6 +126,11 @@ tiup cluster patch -y test tiflash.parallel.500.tar.gz --overwrite -R tiflash
 
 ./br-cse restore db --db=test --storage=s3://qa-workload-datasets/benchmark/tpch50 --s3.region=us-west-2 --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a --leader-download=true
 
+./br-cse restore db --db=tpcc --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 --send-credentials-to-tikv=false --check-requirements=false --pd 172.31.8.1:2379 --keyspace-name a --leader-download=true
+
+
+
+mysql --host 172.31.7.1 --port 4000 -u root -e "alter database chbenchmark set tiflash replica 0;"
 
 mysql --host 172.31.7.1 --port 4000 -u root -e "alter database chbenchmark set tiflash replica 1;"
 mysql --host 172.31.7.1 --port 4000 -u root -e "select * from information_schema.tiflash_replica;"

@@ -13,9 +13,15 @@ sum(tiflash_fap_task_result{instance=~"$instance"}) by (type)
 sum(tiflash_fap_task_state{instance=~"$instance"}) by (type)
 
 
+sum(tiflash_proxy_tikv_raftstore_region_count{type="region"}) by (instance)
+
 sum(tiflash_proxy_tikv_raftstore_region_count{instance=~"$instance", type="region"}) by (instance)
+
 histogram_quantile(0.99, sum(rate(tiflash_fap_task_duration_seconds_bucket{}[1m])) by (le, type))
 
 
 histogram_quantile(0.99, sum(rate(tiflash_fap_task_duration_seconds_bucket{instance=~"$instance"}[1m])) by (le, type))
 histogram_quantile(0.99, sum(tiflash_fap_task_duration_seconds_bucket{instance=~"$instance"}) by (le, type))
+
+
+sum(tiflash_system_profile_event_S3PageReaderNotReusedFile{k8s_cluster="$k8s_cluster", tidb_cluster=~"$tidb_cluster.*", instance=~"$instance"}) by (type)

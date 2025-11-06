@@ -7,6 +7,7 @@ tiup cluster destroy test -y
 
 tiup cluster deploy test nightly ./topology.yaml --user ubuntu -i ~/.ssh/id_rsa --yes
 
+
 # 部署
 cd ../cmake-build-Release
 rm -rf tiflash-cloud-native-linux-amd64.tar.gz

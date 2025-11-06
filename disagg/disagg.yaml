@@ -1,0 +1,110 @@
+# # Global variables are applied to all deployments and as the default value of
+# # them if the specific deployment value missing.
+
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/data4/luorongzhen/tidb-deploy/"
+  data_dir: "/data4/luorongzhen/tidb-data/"
+
+
+# # Monitored variables are used to all the machine
+monitored:
+  node_exporter_port: 5350
+  blackbox_exporter_port: 5351
+
+server_configs:
+  tidb:
+    disaggregated-tiflash: true
+    log.file.max-backups: 10
+    log.file.max-days: 5
+    log.slow-threshold: 300
+    performance.txn-total-size-limit: 53687091200 # 50GB
+    #binlog.enable: false
+    #binlog.ignore-error: false
+  tikv:
+    # server.grpc-concurrency: 4
+    # rocksdb.max-sub-compactions: 1
+    # memory-usage-limit: 50GB
+    raftstore.capacity: 1099511627776
+    #server.snap-max-write-bytes-per-sec: 400MB
+    storage.block-cache.capacity: "8GB"
+    raftstore.apply-pool-size: 4
+    raftstore.store-pool-size: 4
+  pd:
+    replication.max-replicas: 1
+  tiflash:
+    logger.level: "debug"
+  tiflash-learner:
+    raftstore.capacity: 500GiB
+    raftstore.apply-pool-size: 4
+    raftstore.store-pool-size: 4
+    raftstore.apply-low-priority-pool-size: 4
+    server.snap-max-write-bytes-per-sec: 400MB
+
+pd_servers:
+  - host: 10.2.12.79
+    name: "pd-1"
+    client_port: 5352
+    peer_port: 5353
+
+tidb_servers:
+  - host: 10.2.12.79
+    port: 5354
+    status_port: 5355
+    #config:
+    #  disaggregated-tiflash: true
+
+tikv_servers:
+  - host: 10.2.12.79
+    port: 5356
+    status_port: 5357
+    config:
+      #storage.api-version: 2
+      #storage.enable-ttl: true
+
+tiflash_servers:
+  - host: 10.2.12.79
+    tcp_port: 5358
+    http_port: 5359
+    flash_service_port: 5360
+    flash_proxy_port: 5361
+    flash_proxy_status_port: 5362
+    metrics_port: 5363
+    config:
+      #storage.api-version: 2
+      tcp_port: 5364
+      flash.disaggregated_mode: tiflash_write
+      storage.main.dir: [ /data3/luorongzhen/tidb-data-disagg/tiflash-w1/data ]
+      storage.s3.bucket: "tiflash-disagg"
+      storage.s3.root: "/"
+      storage.s3.endpoint: "http://127.0.0.1:12002"
+      storage.s3.access_key_id: minioadmin
+      storage.s3.secret_access_key: minioadmin
+  - host: 10.2.12.79
+    tcp_port: 5365
+    http_port: 5366
+    flash_service_port: 5367
+    flash_proxy_port: 5368
+    flash_proxy_status_port: 5369
+    metrics_port: 5370
+    config:
+      #storage.api-version: 2
+      flash.disaggregated_mode: tiflash_compute
+      storage.main.dir: [ /data3/luorongzhen/tidb-data-disagg/tiflash-r1/data ]
+      storage.s3.bucket: "tiflash-disagg"
+      storage.s3.root: "/"
+      storage.s3.endpoint: "http://127.0.0.1:12002"
+      storage.s3.access_key_id: minioadmin
+      storage.s3.secret_access_key: minioadmin
+
+monitoring_servers:
+  - host: 10.2.12.79
+    port: 5371
+    ng_port: 5372
+
+grafana_servers:
+  - host: 10.2.12.79
+    port: 5373
+    anonymous_enable: true
+

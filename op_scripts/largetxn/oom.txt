@@ -1,0 +1,185 @@
+tiup br restore full --pd http://10.2.12.79:5701 --send-credentials-to-tikv=false --check-requirements=false --storage=s3://qa-workload-datasets/benchmark/ch-1k-v5 --s3.region=us-west-2 
+
+tiup br restore full --pd http://10.2.12.81:5701 --send-credentials-to-tikv=false --check-requirements=false --storage=s3://http://minio.pingcap.net:42041/buckets/benchmark/ch-1k 
+
+
+curl http://10.2.12.81:5765/debug/pprof/heap
+
+mysql --host 10.2.12.81 --port 5711 --user root
+
+alter database tpcc set tiflash replica 1;
+
+
+create table tpcc.orders2 like tpcc.orders;
+alter table tpcc.orders2 set tiflash replica 1;
+
+set tidb_mem_quota_query = 12 * 1024 * 1024 * 1024;
+
+begin;
+insert into tpcc.orders2 select * from tpcc.orders limit 15000000;
+
+
+===========
+
+tiflash_proxy_tikv_server_raft_append_rejects{}
+tiflash_proxy_tikv_server_raft_snapshot_rejects{}
+
+sum(rate(tiflash_proxy_tikv_server_raft_append_rejects{}[1m])) by (instance)
+
+===========
+
+sudo cp dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash
+sudo cp contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so   /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so
+sudo cp contrib/GmSSL/lib/libgmssl.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssl.so.3
+
+tiup ctl:nightly pd -u 10.2.12.81:5701 config set max-replicas 1
+
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+tiup br:v8.4.0 restore db --db test  -s s3://benchmark/guojiangtao/tpch50_def_v620_with_tiflash \
+  --s3.endpoint http://minio.pingcap.net:9000 --send-credentials-to-tikv=true \
+  --merge-region-size-bytes=100663290 --merge-region-key-count=960001 \
+  --pd 10.2.12.81:5701
+
+mysql --host 10.2.12.81 --port 5711 --user root --comments
+
+select * from information_schema.tiflash_replica;
+
+// 这个是 pipeline dml
+
+drop table if exists test.orders_copy;create table test.orders_copy like test.orders;alter table test.orders_copy set tiflash replica 1;set tidb_dml_type = 'bulk';set autocommit = true;set tidb_mem_quota_query = 12 * 1024 * 1024 * 1024;
+insert into test.orders_copy select * from test.orders limit 15000000;
+
+drop table if exists test.orders_copy;create table test.orders_copy like test.orders;alter table test.orders_copy set tiflash replica 1;set tidb_dml_type = 'bulk';set autocommit = true;set tidb_mem_quota_query = 12 * 1024 * 1024 * 1024;
+insert into test.orders_copy select * from test.orders limit 10000000;
+
+drop table if exists test.orders_copy;create table test.orders_copy like test.orders;alter table test.orders_copy set tiflash replica 1;set tidb_dml_type = 'bulk';set autocommit = true;set tidb_mem_quota_query = 12 * 1024 * 1024 * 1024;
+insert into test.orders_copy select * from test.orders limit 5000000;
+
+// 这个是普通事务
+
+drop table if exists test.orders_copy;create table test.orders_copy like test.orders;alter table test.orders_copy set tiflash replica 1;set autocommit = false;set tidb_mem_quota_query = 14 * 1024 * 1024 * 1024;
+
+begin;insert into test.orders_copy select * from test.orders limit 15000000;
+
+commit;
+
+alter table test.orders_copy set tiflash replica 0;
+
+select /*+ read_from_storage(tiflash[test.orders_copy]) */ count(*) from test.orders_copy;
+
+drop table if exists test.orders_copy2;create table test.orders_copy2 like test.orders;alter table test.orders_copy2 set tiflash replica 1;set autocommit = false;set tidb_mem_quota_query = 12 * 1024 * 1024 * 1024;
+
+begin;insert into test.orders_copy2 select * from test.orders_copy limit 15000000;
+
+
+===
+
+mysql --host 10.2.12.81 --port 5711 -u root -e "CREATE DATABASE narrow; CREATE TABLE narrow.t(id int NOT NULL AUTO_INCREMENT,ins VARCHAR(4),ts int,r VARCHAR(4),s VARCHAR(4),v int,incr int);"
+mysql --host 10.2.12.81 --port 5711 -u root -e "ALTER DATABASE narrow set tiflash replica 1;"
+repeat 300 mysql --host 10.2.12.81 --port 5711 -u root -e "insert into narrow.t (ins, ts, r, s, v, incr) values ('aaa', 1, 'bbb', 'ccc', 8, 9);"
+
+/*+ read_from_storage(tiflash[narrow.t]) */
+
+===========
+
+cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -GNinja ..
+
+
+sudo cp dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash
+sudo cp contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so
+sudo cp contrib/GmSSL/lib/libgmssl.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssl.so.3
+
+sudo cp /data3/calvin_81/disk1/tiflash/tics/rel/dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash
+sudo cp /data3/calvin_81/disk1/tiflash/tics/rel/contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so
+sudo cp /data3/calvin_81/disk1/tiflash/tics/rel/contrib/GmSSL/lib/libgmssl.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssl.so.3
+
+sudo cp /data3/calvin_81/disk1/tiflash/tics/dbg/dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash
+sudo cp /data3/calvin_81/disk1/tiflash/tics/dbg/contrib/tiflash-proxy-cmake/debug/libtiflash_proxy.so /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so
+sudo cp /data3/calvin_81/disk1/tiflash/tics/dbg/contrib/GmSSL/lib/libgmssld.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssld.so.3
+
+ninja tiflash -j20 && tcsttf2 && sudo cp /data3/calvin_81/disk1/tiflash/tics/dbg/dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash && sudo cp /data3/calvin_81/disk1/tiflash/tics/dbg/contrib/tiflash-proxy-cmake/debug/libtiflash_proxy.so /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so && sudo cp /data3/calvin_81/disk1/tiflash/tics/dbg/contrib/GmSSL/lib/libgmssld.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssld.so.3 && tcs2 && curl "10.2.12.79:5765/debug/pprof/set_prof_active"
+
+ninja tiflash -j20 && tcsttf2 && sudo cp /data3/calvin_81/disk1/tiflash/tics/rel/dbms/src/Server/tiflash  /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash && sudo cp /data3/calvin_81/disk1/tiflash/tics/rel/contrib/tiflash-proxy-cmake/release/libtiflash_proxy.so /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so && sudo cp /data3/calvin_81/disk1/tiflash/tics/rel/contrib/GmSSL/lib/libgmssl.so.3 /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libgmssl.so.3 && tcs2 && curl "10.2.12.79:5765/debug/pprof/set_prof_active"
+
+tcrtf2 && curl "10.2.12.79:5765/debug/pprof/set_prof_active"
+
+curl "10.2.12.79:5765/debug/pprof/heap?jeprof=true&text=svg" > t.svg
+python3 -m http.server 9897
+
+curl "10.2.12.81:5765/debug/pprof/arena_purge"
+curl "10.2.12.81:5765/debug/pprof/memory_status"
+
+
+curl "10.2.12.79:5765/debug/pprof/arena_purge"
+curl "10.2.12.79:5765/debug/pprof/memory_status"
+
+curl "10.2.12.79:5765/debug/pprof/set_prof_active"
+curl "10.2.12.79:5765/debug/pprof/set_prof_inactive"
+
+
+select /*+ read_from_storage(tiflash[test.orders_copy]) */ count(*) from test.orders_copy;
+
+
+curl "10.2.12.79:5765/debug/pprof/heap_activate"
+curl "10.2.12.79:5765/debug/pprof/heap_list"
+curl "10.2.12.79:5765/debug/pprof/heap_deactivate"
+
+sudo lsof -i:5761
+ps -p 3749191 -o %mem,rss
+
+/DATA/disk3/calvin_81/disk1/jemalloc-5.2.1/bin/jeprof -svg /data3/calvin_81/disk1/tiflash/tics/rel/dbms/src/Server/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so /DATA/disk4/luorongzhen/tidb-data/tiflash-5761/flash/heap-WqUNbN/000003.heap > before_commit.svg
+
+./jeprof.in --svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so /DATA/disk4/luorongzhen/tidb-data/tiflash-5761/flash/heap-Jo7Vhh/000007.heap > bc.svg
+
+./jeprof.in --svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so /data4/luorongzhen/tidb-deploy/tiflash-5761/jeprof.891729.127.i127.heap > ac.svg
+
+./jeprof.in --svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so /DATA/disk1/calvin/jeprof/tiflash.1734082413.10.2.12.79.pprof.heap > s.svg
+
+./jeprof.in --svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so t.raw > t1.svg
+
+./jeprof.in --svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so /DATA/disk4/luorongzhen/tidb-data/tiflash-5761/flash/heap-IjgXO3/000002.heap > t1.svg
+
+========
+
+curl "10.2.12.81:5765/debug/pprof/heap?jeprof=true&text=svg" 
+
+curl "10.2.12.81:5765/debug/pprof/heap?jeprof=false&text=svg" > a.txt
+/data2/calvin_81/c/tics2/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in -svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so a.txt > aa.svg
+
+
+/data2/calvin_81/c/tics2/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in -svg ./tiflash/tiflash --lib_prefix=./heap-Gx1lbi/tiflash/ --add_lib=./tiflash/libtiflash_proxy.so 0621-0058.heap > bb.svg
+
+/data2/calvin_81/c/tics2/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in -svg /tiflash/tiflash --add_lib=/tiflash/libtiflash_proxy.so 0621-0058.heap > bb.svg 2> debug2.txt
+
+
+./jeprof --svg ./tiflash/tiflash --lib_prefix=./tiflash/ 0621-0058.heap > 0621-0058.svg
+
+
+/data2/calvin_81/c/tics2/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in -svg /data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/tiflash --add_lib=/data4/luorongzhen/tidb-deploy/tiflash-5761/bin/tiflash/libtiflash_proxy.so /DATA/disk4/luorongzhen/tidb-data/tiflash-5761/flash/heap-Zn7qPg/000002.heap > aa.svg
+
+/data2/calvin_81/c/tics2/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in -svg /tiflash/tiflash --add_lib=/tiflash/libtiflash_proxy.so 0621-0058.heap > aa.svg
+
+
+/data2/calvin_81/c/tics2/contrib/tiflash-proxy/proxy_components/proxy_server/src/status_server/jeprof.in -svg /tiflash/tiflash --add_lib=/tiflash/libtiflash_proxy.so a > bb99.svg 
+
+
+// Keys flow 非增量的
+sum(tiflash_raft_process_keys{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance"}) by (type)
+
+SET SESSION tidb_txn_mode = 'optimistic';
+SET GLOBAL tidb_txn_mode = 'optimistic';
+
+SET SESSION tidb_txn_mode = 'pessimistic';
+SET GLOBAL tidb_txn_mode = 'pessimistic';
+
+
+sum(tiflash_raft_proxy_thread_memory_usage{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type=~"alloc_.*"}) by (instance)
+-sum(tiflash_raft_proxy_thread_memory_usage{k8s_cluster="$k8s_cluster", tidb_cluster="$tidb_cluster", instance=~"$instance", type=~"dealloc_.*"}) by (instance)
+
+
+/DATA/disk3/calvin_81/disk1/jemalloc-5.2.1/bin/jeprof -svg "10.2.12.79:5765/debug/pprof/heap" > s.svg
+
+
+[profiles]
+[profiles.default]
+max_memory_usage_for_all_queries = 4294967296

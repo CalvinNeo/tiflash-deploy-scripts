@@ -1,0 +1,193 @@
+Name:         tc-tiflash-0
+Namespace:    ha-test-serverless-htap-tps-7604484-1-300
+Priority:     0
+Node:         172.16.6.13/172.16.6.13
+Start Time:   Thu, 18 Jul 2024 11:18:01 +0800
+Labels:       app.kubernetes.io/component=tiflash
+              app.kubernetes.io/instance=tc
+              app.kubernetes.io/managed-by=tidb-operator
+              app.kubernetes.io/name=tidb-cluster
+              controller-revision-hash=tc-tiflash-c4b4b8947
+              statefulset.kubernetes.io/pod-name=tc-tiflash-0
+              tidb.pingcap.com/cluster-id=7392809642240297859
+              tidb.pingcap.com/store-id=13
+Annotations:  app.kubernetes.io/managed-by: test-infra
+              cni.projectcalico.org/containerID: 8f3375e37e2c21fc151bc2cae9c2e7b341ba189d70ba8d97e208079d0aeccb0b
+              cni.projectcalico.org/podIP: 10.233.71.77/32
+              cni.projectcalico.org/podIPs: 10.233.71.77/32
+              prometheus.io/path: /metrics
+              prometheus.io/port: 8234
+              prometheus.io/scrape: true
+              test-infra.pingcap.net/max-replicas: 2
+              tiflash.proxy.prometheus.io/port: 20292
+Status:       Running
+IP:           10.233.71.77
+IPs:
+  IP:           10.233.71.77
+Controlled By:  StatefulSet/tc-tiflash
+Init Containers:
+  init:
+    Container ID:  docker://8abef1c386fcd914bd7b7043bda743eed6816e4b77177e67fb5de9cc3524e098
+    Image:         registry-mirror.pingcap.net/library/busybox:1.33.0
+    Image ID:      docker-pullable://busybox@sha256:315fd9e7f9056a6d76dfc2c63a5377c37aaa79faed354dce683147ed781adc77
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      set -ex;ordinal=`echo ${POD_NAME} | awk -F- '{print $NF}'`;sed s/POD_NUM/${ordinal}/g /etc/tiflash/config_templ.toml > /data0/config.toml;sed s/POD_NUM/${ordinal}/g /etc/tiflash/proxy_templ.toml > /data0/proxy.toml
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Thu, 18 Jul 2024 11:18:02 +0800
+      Finished:     Thu, 18 Jul 2024 11:18:02 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     500m
+      memory:  1Gi
+    Requests:
+      cpu:     500m
+      memory:  1Gi
+    Environment:
+      POD_NAME:  tc-tiflash-0 (v1:metadata.name)
+    Mounts:
+      /data0 from data0 (rw)
+      /etc/tiflash from config (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f6zl7 (ro)
+Containers:
+  tiflash:
+    Container ID:  docker://2808e36fcba3fff65e02cae251452ced79f92c5d9184a07c224d1c2792a4f83f
+    Image:         hub.pingcap.net/keyspace/tiflash:v7.5.0
+    Image ID:      docker-pullable://hub.pingcap.net/keyspace/tiflash@sha256:722f71f2bb7aaed492d3333a20a8094547d3cf610f4246e06af027d6a60d2d0c
+    Ports:         3930/TCP, 20170/TCP, 9000/TCP, 8123/TCP, 9009/TCP, 8234/TCP
+    Host Ports:    0/TCP, 0/TCP, 0/TCP, 0/TCP, 0/TCP, 0/TCP
+    Command:
+      /bin/sh
+      -c
+      /tiflash/tiflash server --config-file /data0/config.toml
+    State:          Running
+      Started:      Thu, 18 Jul 2024 11:18:04 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     8
+      memory:  64Gi
+    Requests:
+      cpu:     8
+      memory:  64Gi
+    Environment:
+      NAMESPACE:              ha-test-serverless-htap-tps-7604484-1-300 (v1:metadata.namespace)
+      CLUSTER_NAME:           tc
+      HEADLESS_SERVICE_NAME:  tc-tiflash-peer
+      CAPACITY:               0
+      TZ:                     Asia/Shanghai
+      MALLOC_CONF:            prof:true,prof_active:false
+    Mounts:
+      /data0 from data0 (rw)
+      /etc/podinfo from annotations (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f6zl7 (ro)
+  serverlog:
+    Container ID:  docker://2f594baa55f6d6ce535442d98c8bfcbda41dbee98093a8935bd6079b16615bf9
+    Image:         registry-mirror.pingcap.net/library/busybox:1.33.0
+    Image ID:      docker-pullable://busybox@sha256:315fd9e7f9056a6d76dfc2c63a5377c37aaa79faed354dce683147ed781adc77
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      touch /data0/logs/server.log; tail -n0 -F /data0/logs/server.log;
+    State:          Running
+      Started:      Thu, 18 Jul 2024 11:18:05 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  100Mi
+    Requests:
+      cpu:        100m
+      memory:     100Mi
+    Environment:  <none>
+    Mounts:
+      /data0 from data0 (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f6zl7 (ro)
+  errorlog:
+    Container ID:  docker://2e77cfb05e5f497e80852321dffa47a11e86a13a331a8c3f96f3c6d0ba079d88
+    Image:         registry-mirror.pingcap.net/library/busybox:1.33.0
+    Image ID:      docker-pullable://busybox@sha256:315fd9e7f9056a6d76dfc2c63a5377c37aaa79faed354dce683147ed781adc77
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      touch /data0/logs/error.log; tail -n0 -F /data0/logs/error.log;
+    State:          Running
+      Started:      Thu, 18 Jul 2024 11:18:06 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  100Mi
+    Requests:
+      cpu:        100m
+      memory:     100Mi
+    Environment:  <none>
+    Mounts:
+      /data0 from data0 (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f6zl7 (ro)
+  clusterlog:
+    Container ID:  docker://ace9cd8c96bcea75d5e0c7b85235469cf38fdd3422b3033c2b9bb8f62bda8b8a
+    Image:         registry-mirror.pingcap.net/library/busybox:1.33.0
+    Image ID:      docker-pullable://busybox@sha256:315fd9e7f9056a6d76dfc2c63a5377c37aaa79faed354dce683147ed781adc77
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      touch /data0/logs/flash_cluster_manager.log; tail -n0 -F /data0/logs/flash_cluster_manager.log;
+    State:          Running
+      Started:      Thu, 18 Jul 2024 11:18:07 +0800
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  100Mi
+    Requests:
+      cpu:        100m
+      memory:     100Mi
+    Environment:  <none>
+    Mounts:
+      /data0 from data0 (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f6zl7 (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             True
+  ContainersReady   True
+  PodScheduled      True
+Volumes:
+  data0:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  data0-tc-tiflash-0
+    ReadOnly:   false
+  annotations:
+    Type:  DownwardAPI (a volume populated by information about the pod)
+    Items:
+      metadata.annotations -> annotations
+  config:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      tc-tiflash-3138353
+    Optional:  false
+  kube-api-access-f6zl7:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   Guaranteed
+Node-Selectors:              resourcepool=qa-harun
+Tolerations:                 dedicated=test-infra:NoSchedule
+                             node.kubernetes.io/memory-pressure:NoSchedule op=Exists
+                             node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:                      <none>

@@ -13,3 +13,8 @@ do
 done
 fi
 
+tcc calvin-cse-s3 && tcs calvin-cse-s3 && go-tpc tpcc --warehouses 10 prepare -T 30 -H 10.2.12.81 -P 11005 -D tpcc
+
+
+
+go-tpc tpcc --warehouses 1 run -T 5 -H 10.2.12.81 -P 11005 -D tpcc
