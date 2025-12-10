@@ -1,0 +1,111 @@
+# # Global variables are applied to all deployments and as the default value of
+# # them if the specific deployment value missing.
+
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/data2/calvin_81/c/tici/clusters/"
+
+# # Monitored variables are used to all the machine
+monitored:
+  node_exporter_port: 12463
+  blackbox_exporter_port: 12464
+
+server_configs:
+  tidb:
+    log.slow-threshold: 300
+    binlog.enable: false
+    binlog.ignore-error: false
+    performance.txn-total-size-limit: 53687091200 # 1GB
+  tikv:
+    # server.grpc-concurrency: 4
+    # rocksdb.max-sub-compactions: 1
+    # memory-usage-limit: 50GB
+    #server.snap-max-write-bytes-per-sec: 400MB
+    raftstore.capacity: 1099511627776 # 1TB
+    storage.block-cache.capacity: "8GB"
+    raftstore.apply-pool-size: 4
+    raftstore.store-pool-size: 4
+    log.file.max-backups: 30
+    storage.api-version: 2
+    storage.enable-ttl: true
+    dfs.s3-endpoint: "http://127.0.0.1:9000"
+    dfs.s3-key-id: "minioadmin"
+    dfs.s3-secret-key: "minioadmin"
+    dfs.s3-bucket: "tici-nextgen-test"
+    dfs.s3-region: "local"
+    dfs.prefix: "tikv"
+  pd:
+    replication.max-replicas: 1
+    replication.location-labels: ["zone", "host"]
+
+pd_servers:
+  - host: 127.0.0.1
+    name: "pd-1"
+    client_port: 12470
+    peer_port: 12471
+    config:
+      keyspace.pre-alloc: ["ks1"]
+
+tidb_servers:
+  - host: 127.0.0.1
+    port: 12480
+    status_port: 12481
+    config:
+      disaggregated-tiflash: true
+      keyspace-name: "SYSTEM"
+      tidb-service-scope: "dxf_service"
+  - host: 127.0.0.1
+    port: 12482
+    status_port: 12483
+    config:
+      disaggregated-tiflash: true
+      keyspace-name: "ks1"
+      tidb-service-scope: "dxf_service"
+
+tikv_servers:
+  - host: 127.0.0.1
+    port: 12490
+    status_port: 12491
+    config:
+      server.labels:
+        host: tidb-host-machine-1
+
+tiflash_servers:
+  - host: 127.0.0.1
+    tcp_port: 12440
+    http_port: 12441
+    flash_service_port: 12442
+    flash_proxy_port: 12443
+    flash_proxy_status_port: 12444
+    metrics_port: 12445
+    config:
+      #storage.io_rate_limit.max_bytes_per_sec: 209715200 # 200MB/s
+      tcp_port: 12440
+      storage.main.dir :   [ /data2/calvin_81/c/tici/clusters/tiflash-12440/data ]
+      storage.main.capacity:   [ 536870912000 ]
+      flash.disaggregated_mode:  "tiflash_write"
+  - host: 127.0.0.1
+    tcp_port: 12446
+    http_port: 12447
+    flash_service_port: 12448
+    flash_proxy_port: 12449
+    flash_proxy_status_port: 12439
+    metrics_port: 12438
+    config:
+      tcp_port: 12446
+      storage.main.dir :   [ /data2/calvin_81/c/tici/clusters/tiflash-12446/data ]
+      storage.main.capacity:   [ 536870912000 ]
+      flash.disaggregated_mode:  "tiflash_compute"
+      storage.remote.cache.dir: /data2/calvin_81/c/tici/clusters/tiflash-12446/data
+      storage.remote.cache.capacity: 536870912000
+
+monitoring_servers:
+  - host: 127.0.0.1
+    port: 12460
+    ng_port: 12461
+
+grafana_servers:
+  - host: 127.0.0.1
+    port: 12462
+    anonymous_enable: true

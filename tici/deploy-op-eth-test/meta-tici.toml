@@ -1,0 +1,33 @@
+# [tidb_server]
+# dsns = ["mysql://root@localhost:4000"]
+# cert_path = ""
+
+[server]
+addr = "127.0.0.1:8500"
+advertise_addr = "127.0.0.1:8500"
+status_addr = "127.0.0.1:8501"
+advertise_status_addr = "127.0.0.1:8501"
+pd_addr = "127.0.0.1:5845"
+
+# [reader_pool]
+# ttl_seconds = 9
+# cleanup_interval_seconds = 1
+# scheduling_strategy = "round_robin"
+
+[s3]
+endpoint = "http://localhost:9000"
+region = "us-east-1"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+use_path_style = true
+bucket = "ticidefaultbucket"
+prefix = "calvin_default_prefix"
+
+[security]
+ca-path = "/data2/calvin_81/c/tici/tici/ci/tls/ca.crt"
+cert-path = "/data2/calvin_81/c/tici/tici/ci/tls/tici-meta.crt"
+key-path = "/data2/calvin_81/c/tici/tici/ci/tls/tici-meta.pem"
+
+# [shard]
+# max_size = "1024MB"
+# split_threshold = 0.75

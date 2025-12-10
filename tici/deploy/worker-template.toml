@@ -1,0 +1,25 @@
+# heartbeat_interval = "3s"
+# cdc_s3_flush_interval = "5s"
+
+[server]
+addr = "127.0.0.1:12844"
+advertise_addr = "127.0.0.1:12844"
+status_addr = "127.0.0.1:12845"
+advertise_status_addr = "127.0.0.1:12845"
+pd_addr = "127.0.0.1:12470"
+
+[s3]
+endpoint = "http://localhost:9000"
+region = "us-east-1"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+use_path_style = true
+bucket = "calvin-nextgen-logbucket"
+prefix = "storage_test"
+
+[frag_writer]
+# local_data_path = "fragments"
+index_num_threads = 4
+index_mem_budget = "255MB"
+index_flush_interval = "5s"
+index_flush_size_limit = "5MB"

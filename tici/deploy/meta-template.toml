@@ -1,0 +1,24 @@
+[tidb_server]
+dsns = ["mysql://root@127.0.0.1:12480"]
+# cert_path = ""
+
+[server]
+addr = "0.0.0.0:12744"
+advertise_addr = "127.0.0.1:12744"
+status_addr = "0.0.0.0:12745"
+advertise_status_addr = "127.0.0.1:12745"
+pd_addr = "127.0.0.1:12470"
+
+# [reader_pool]
+# ttl_seconds = 9
+# cleanup_interval_seconds = 1
+# scheduling_strategy = "round_robin"
+
+[s3]
+endpoint = "http://localhost:9000"
+region = "us-east-1"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+use_path_style = true
+bucket = "calvin-nextgen-logbucket"
+prefix = "storage_test"
